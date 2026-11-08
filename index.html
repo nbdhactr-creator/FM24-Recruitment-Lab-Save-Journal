@@ -1802,28 +1802,41 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- TACTIC -->
   <section class="view" id="v-tactic" hidden>
-    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Best XIs are chosen to maximise total role score, with each player used once. Gold rings mark your players.</p></div></div>
+    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Build a tactical setup first, then see which players fit it. The Lab selects each player once and maximises the total role score.</p></div></div>
     <div class="panel">
       <div class="grp">
-        <div class="grid g5">
-          <div class="field"><label for="tacsel">Tactic</label><select id="tacsel"></select></div>
+        <h3 style="margin:0 0 5px">1 · Choose your tactical setup</h3>
+        <p class="hint" style="margin:0 0 12px">Start from a familiar FM24 style. Applying a preset replaces the current formation and role duties; you can then customise every position.</p>
+        <div class="grid g3">
+          <div class="field"><label for="tacpreset">Tactical style preset</label><select id="tacpreset"></select></div>
+          <div class="field"><label for="tacsel">Saved tactic</label><select id="tacsel"></select></div>
           <div class="field"><label for="formsel">Formation</label><select id="formsel"></select></div>
-          <div class="field"><label for="xiscope">Show</label><select id="xiscope"><option value="mine">Your squad's best XI</option><option value="league">A league's best XI</option><option value="group">A comparison group's best XI</option></select></div>
-          <div class="field" id="xileaguewrap"><label for="xileague">League</label><select id="xileague"></select></div>
-          <div class="field"><label for="ximins">Min minutes for selection</label><input id="ximins" type="number" min="0" step="100" value="900" inputmode="numeric"></div>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-          <button class="btn sm" id="tacnew" type="button">New tactic</button>
-          <button class="btn sm" id="tacsave" type="button">Save tactic</button>
-          <button class="btn sm ghost" id="tacdel" type="button">Delete tactic</button>
-          <span style="flex:1"></span>
-          <select id="grpsel" style="width:auto;max-width:260px"></select>
-          <button class="btn sm" id="grpedit" type="button">Edit groups</button>
+        <div id="tacpresetdesc" class="hint" style="margin-top:8px;min-height:18px"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+          <button class="btn sm primary" id="tacapply" type="button">Apply preset</button>
+          <button class="btn sm" id="tacnew" type="button">Save as new tactic</button>
+          <button class="btn sm" id="tacsave" type="button">Save changes</button>
+          <button class="btn sm ghost" id="tacdel" type="button">Delete saved tactic</button>
         </div>
       </div>
-      <div class="tac">
-        <div><h3 class="h2" style="font-size:1.2rem;margin:0 0 10px">Roles</h3><div class="slots" id="slots"></div></div>
-        <div><h3 class="h2" style="font-size:1.2rem;margin:0 0 10px" id="pitchtitle"></h3><div class="pitch" id="pitch"></div></div>
+      <div class="grp" style="border-top:1px solid var(--line)">
+        <h3 style="margin:0 0 5px">2 · Fine-tune player roles</h3>
+        <p class="hint" style="margin:0 0 12px">Each row is one position in your formation. Choose the FM24 role and duty for that slot. These choices drive the role scores and Best XI.</p>
+        <div><h3 class="h2" style="font-size:1.05rem;margin:0 0 10px">Position · Role and duty</h3><div class="slots" id="slots"></div></div>
+      </div>
+      <div class="grp" style="border-top:1px solid var(--line)">
+        <h3 style="margin:0 0 5px">3 · Best XI and comparison</h3>
+        <p class="hint" style="margin:0 0 12px">Your squad view respects manual player placements. League and group views calculate each club's best XI independently.</p>
+        <div class="grid g4">
+          <div class="field"><label for="xiscope">Best XI pool</label><select id="xiscope"><option value="mine">My club</option><option value="league">Selected league</option><option value="group">Comparison group</option></select></div>
+          <div class="field" id="xileaguewrap"><label for="xileague">League</label><select id="xileague"></select></div>
+          <div class="field" id="xigroupwrap"><label for="grpsel">Comparison group</label><select id="grpsel"></select></div>
+          <div class="field"><label for="ximins">Minimum minutes</label><input id="ximins" type="number" min="0" step="100" value="900" inputmode="numeric"></div>
+        </div>
+        <div id="pitchtitle" style="font-weight:650;margin:14px 0 8px"></div>
+        <p class="hint" style="margin:0 0 10px">Click a player on the pitch to place or swap them. A pin means the Lab keeps that player in the slot. Use the reset option in the player picker to return to automatic selection.</p>
+        <div class="pitch" id="pitch"></div>
       </div>
       <div class="grp">
         <h3>Slot benchmarks</h3>
@@ -3751,6 +3764,12 @@ function fillTacticUI(){
   const ts = tacticList(); if (!S.tac || !ts.find(t => t.id === S.tac.id)) S.tac = JSON.parse(JSON.stringify(ts[0]));
   $('tacsel').innerHTML = ts.map(t => `<option value="${t.id}"${t.id===S.tac.id?' selected':''}>${esc(t.name)}</option>`).join('');
   $('formsel').innerHTML = Object.keys(FORMATIONS).map(f => `<option${f===S.tac.formation?' selected':''}>${f}</option>`).join('');
+  $('tacpreset').innerHTML = TAC_PRESETS.map(t => `<option value="${t.key}">${esc(t.name)}</option>`).join('');
+  const matchedPreset = TAC_PRESETS.find(t => t.formation === S.tac.formation && FORMATIONS[t.formation].every(code => t.roles[code] === S.tac.roles[code]));
+  $('tacpreset').value = matchedPreset ? matchedPreset.key : TAC_PRESETS[0].key;
+  $('tacpresetdesc').textContent = (TAC_PRESETS.find(t => t.key === $('tacpreset').value) || TAC_PRESETS[0]).desc;
+  $('xigroupwrap').style.display = $('xiscope').value === 'group' ? '' : 'none';
+  $('xileaguewrap').style.display = $('xiscope').value === 'league' ? '' : 'none';
   const lg = [...S.season.leagues].sort((a,b) => ((REP.get(norm(b))||{stars:0}).stars - (REP.get(norm(a))||{stars:0}).stars) || a.localeCompare(b));
   const prevL = $('xileague').value || S.save.myLeague || lg[0];
   $('xileague').innerHTML = lg.map(d => `<option value="${esc(d)}"${d===prevL?' selected':''}>${esc(d)}</option>`).join('');
@@ -3763,10 +3782,13 @@ function renderSlots(){
   codes.forEach(c => { if (!S.tac.roles[c] || roleById[S.tac.roles[c]].strata !== SLOT[c].s){ const def = ROLES.find(r => r.strata === SLOT[c].s); S.tac.roles[c] = def.id; } });
   $('slots').innerHTML = codes.map(c => `<div class="slotrow"><b>${SLOT_LABEL[c]}</b><select data-slot="${c}">${ROLES.filter(r => r.strata === SLOT[c].s).map(r => `<option value="${r.id}"${r.id===S.tac.roles[c]?' selected':''}>${esc(r.name)}, ${esc(r.dutyName.toLowerCase())}</option>`).join('')}</select></div>`).join('');
 }
-$('slots').addEventListener('change', e => { const s = e.target.closest('select[data-slot]'); if (!s) return; S.tac.roles[s.dataset.slot] = s.value; renderTactic(); });
+$('tacpreset').addEventListener('change', () => { const t = TAC_PRESETS.find(x => x.key === $('tacpreset').value); $('tacpresetdesc').textContent = t ? t.desc : ''; });
+$('tacapply').onclick = () => { const t = TAC_PRESETS.find(x => x.key === $('tacpreset').value); if (!t) return; S.tac.formation = t.formation; S.tac.roles = Object.assign({}, t.roles); S.tac.name = t.name; S.save.xiPins = Object.assign({}, S.save.xiPins || {}); delete S.save.xiPins[S.tac.id]; XIC.clear(); DOFC.clear(); fillTacticUI(); renderTactic(); toast(t.name + ' applied. Save changes to keep it.'); };
+$('slots').addEventListener('change', e => { const s = e.target.closest('select[data-slot]'); if (!s) return; S.tac.roles[s.dataset.slot] = s.value; XIC.clear(); DOFC.clear(); renderTactic(); });
 $('tacsel').onchange = () => { S.tac = JSON.parse(JSON.stringify(tacticList().find(t => t.id === $('tacsel').value))); renderSlots(); renderTactic(); };
 $('formsel').onchange = () => { S.tac.formation = $('formsel').value; renderSlots(); renderTactic(); };
-['xiscope','xileague','ximins','grpsel'].forEach(id => $(id).addEventListener(id === 'ximins' ? 'input' : 'change', renderTactic));
+$('xiscope').addEventListener('change', () => { $('xileaguewrap').style.display = $('xiscope').value === 'league' ? '' : 'none'; $('xigroupwrap').style.display = $('xiscope').value === 'group' ? '' : 'none'; renderTactic(); });
+['xileague','ximins','grpsel'].forEach(id => $(id).addEventListener(id === 'ximins' ? 'input' : 'change', renderTactic));
 $('tacnew').onclick = async () => { const name = await ask({title:'New tactic', input:S.tac.formation, label:'Name', ok:'Create tactic'}); if (!name) return; const t = JSON.parse(JSON.stringify(S.tac)); t.id = 't' + Date.now().toString(36); t.name = name; tacticList().push(t); S.tac = JSON.parse(JSON.stringify(t)); await persist(); fillTacticUI(); renderTactic(); toast('Tactic created'); };
 $('tacsave').onclick = async () => { const ts = tacticList(); const i = ts.findIndex(t => t.id === S.tac.id); ts[i] = JSON.parse(JSON.stringify(S.tac)); await persist(); toast('Tactic saved'); };
 $('tacdel').onclick = async () => { const ts = tacticList(); if (ts.length < 2){ toast('Keep at least one tactic'); return; } if (!(await ask({title:'Delete this tactic?', text:'It is removed from this save.', ok:'Delete', danger:true}))) return; S.save.tactics = ts.filter(t => t.id !== S.tac.id); S.tac = null; await persist(); fillTacticUI(); renderTactic(); };
