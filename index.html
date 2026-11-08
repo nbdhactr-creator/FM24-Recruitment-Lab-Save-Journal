@@ -1802,37 +1802,32 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- TACTIC -->
   <section class="view" id="v-tactic" hidden>
-    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Build a tactical role map, then see which players best fit it. Presets are starting points, not a claim that the game will reproduce every team instruction.</p></div></div>
+    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Best XIs are chosen to maximise total role score, with each player used once. Gold rings mark your players.</p></div></div>
     <div class="panel">
       <div class="grp">
-        <h3>1. Choose your tactical setup</h3>
-        <div class="grid g4">
-          <div class="field"><label for="tacsel">Saved tactic</label><select id="tacsel"></select></div>
+        <div class="grid g5">
+          <div class="field"><label for="tacsel">Tactic</label><select id="tacsel"></select></div>
           <div class="field"><label for="formsel">Formation</label><select id="formsel"></select></div>
-          <div class="field"><label for="stylepreset">Tactical style preset</label><select id="stylepreset"><option value="gegen">Gegenpress · 4-2-3-1 DM Wide</option><option value="press433">High press · 4-3-3 DM Wide</option><option value="possession">Possession · 4-3-3 DM Wide</option><option value="balanced">Balanced · 4-2-3-1 DM Wide</option><option value="direct">Direct play · 4-4-2</option></select></div>
-          <div class="field" style="align-self:end"><button class="btn primary" id="applystyle" type="button" style="width:100%">Apply style</button></div>
-        </div>
-        <p class="hint" id="stylehint" style="margin:8px 0 0">Choose a preset to fill the formation and all eleven role/duty slots. You can then change any role manually.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-          <button class="btn sm" id="tacnew" type="button">Save as new tactic</button>
-          <button class="btn sm" id="tacsave" type="button">Save changes</button>
-          <button class="btn sm ghost" id="tacdel" type="button">Delete saved tactic</button>
-        </div>
-      </div>
-      <div class="grp">
-        <h3>2. Fine-tune player roles</h3>
-        <p class="hint" style="margin:0 0 12px">Each slot only shows roles compatible with that position. Full-back and wing-back positions have their own role families; central, wide and attacking positions are filtered separately.</p>
-        <div class="tac"><div><div class="slots" id="slots"></div></div><div><h3 class="h2" style="font-size:1.2rem;margin:0 0 10px" id="pitchtitle"></h3><div class="pitch" id="pitch"></div></div></div>
-      </div>
-      <div class="grp">
-        <h3>3. Best XI comparison</h3>
-        <div class="grid g4">
-          <div class="field"><label for="xiscope">Player pool</label><select id="xiscope"><option value="mine">My Club</option><option value="league">Selected league</option><option value="group">Comparison group</option></select></div>
+          <div class="field"><label for="xiscope">Show</label><select id="xiscope"><option value="mine">Your squad's best XI</option><option value="league">A league's best XI</option><option value="group">A comparison group's best XI</option></select></div>
           <div class="field" id="xileaguewrap"><label for="xileague">League</label><select id="xileague"></select></div>
-          <div class="field"><label for="grpsel">Comparison group</label><select id="grpsel"></select></div>
-          <div class="field"><label for="ximins">Minimum minutes</label><input id="ximins" type="number" min="0" step="100" value="900" inputmode="numeric"></div>
+          <div class="field"><label for="ximins">Min minutes for selection</label><input id="ximins" type="number" min="0" step="100" value="900" inputmode="numeric"></div>
         </div>
-        <p class="hint" id="benchnote" style="margin:10px 0"></p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+          <button class="btn sm" id="tacnew" type="button">New tactic</button>
+          <button class="btn sm" id="tacsave" type="button">Save tactic</button>
+          <button class="btn sm ghost" id="tacdel" type="button">Delete tactic</button>
+          <span style="flex:1"></span>
+          <select id="grpsel" style="width:auto;max-width:260px"></select>
+          <button class="btn sm" id="grpedit" type="button">Edit groups</button>
+        </div>
+      </div>
+      <div class="tac">
+        <div><h3 class="h2" style="font-size:1.2rem;margin:0 0 10px">Roles</h3><div class="slots" id="slots"></div></div>
+        <div><h3 class="h2" style="font-size:1.2rem;margin:0 0 10px" id="pitchtitle"></h3><div class="pitch" id="pitch"></div></div>
+      </div>
+      <div class="grp">
+        <h3>Slot benchmarks</h3>
+        <p class="hint" id="benchnote" style="margin-bottom:10px"></p>
         <div class="tablewrap"><table class="bench"><thead id="bhead"></thead><tbody id="bbody"></tbody></table></div>
       </div>
     </div>
@@ -3751,61 +3746,30 @@ function bestXI(players, tac, minM){
   const asg = hungarian(cost);
   return codes.map((c,i) => { const j = asg[i]; const ok = j >= 0 && j < cands.length && cost[i][j] < BIG; return {code:c, role:roleById[tac.roles[c]], p: ok ? cands[j] : null, sc: ok ? scores[i][j] : null}; });
 }
-function fallbackRole(strata){
-  const preferred = {GK:'sk-GK-S',DC:'cd-DC-D',DLR:'fb-DLR-S',WB:'wb-WB-S',DM:'dm-DM-D',MC:'cm-MC-S',MLR:'wm-MLR-S',AMC:'am-AMC-S',AMLR:'iw-AMLR-S',ST:'af-ST-A'};
-  const id = preferred[strata]; return roleById[id] ? id : (ROLES.find(r => r.strata === strata) || ROLES[0]).id;
-}
-function normalizeTactic(t){
-  const formation = t && FORMATIONS[t.formation] ? t.formation : DEFAULT_TACTIC.formation, roles = {};
-  (FORMATIONS[formation] || []).forEach(c => { const id = t && t.roles && t.roles[c]; roles[c] = roleById[id] && roleById[id].strata === SLOT[c].s ? id : fallbackRole(SLOT[c].s); });
-  return {id:t && t.id ? String(t.id) : 't1', name:t && t.name ? String(t.name) : 'Untitled tactic', formation, roles};
-}
-function tacticList(){
-  if (!S.save || typeof S.save !== 'object') S.save = {};
-  if (!Array.isArray(S.save.tactics)) S.save.tactics = [];
-  S.save.tactics = S.save.tactics.filter(t => t && typeof t === 'object').map((t,i) => normalizeTactic(Object.assign({id:'t'+(i+1)},t)));
-  if (!S.save.tactics.length) S.save.tactics = [normalizeTactic(Object.assign({id:'t1'},DEFAULT_TACTIC))];
-  return S.save.tactics;
-}
-const TACTIC_STYLES = {
-  gegen:{name:'Gegenpress',formation:'4-2-3-1 DM wide',hint:'Aggressive high press: a screening midfielder, ball-winner, advanced central runner and pressing forward.',roles:{GK:'sk-GK-S',DL:'wb-DLR-A',DCL:'bpd-DC-D',DCR:'cd-DC-D',DR:'fb-DLR-S',DMCL:'bwm-DM-D',DMCR:'dlp-DM-S',AML:'if-AMLR-A',AMC:'ss-AMC-A',AMR:'iw-AMLR-A',ST:'pf-ST-A'}},
-  press433:{name:'High press',formation:'4-3-3 DM wide',hint:'Front-foot 4-3-3: one holding midfielder, two mobile central midfielders and three aggressive forwards.',roles:{GK:'sk-GK-S',DL:'wb-DLR-A',DCL:'bpd-DC-D',DCR:'cd-DC-D',DR:'fb-DLR-S',DM:'anchor-DM-D',MCL:'b2b-MC-S',MCR:'mez-MC-A',AML:'if-AMLR-A',AMR:'winger-AMLR-A',ST:'pf-ST-A'}},
-  possession:{name:'Possession',formation:'4-3-3 DM wide',hint:'Build-up focused 4-3-3: a deep playmaker, patient midfield support and mixed wide-forward roles.',roles:{GK:'sk-GK-S',DL:'iwb-DLR-S',DCL:'bpd-DC-D',DCR:'bpd-DC-D',DR:'fb-DLR-S',DM:'dlp-DM-D',MCL:'ap-MC-S',MCR:'cm-MC-S',AML:'winger-AMLR-S',AMR:'if-AMLR-A',ST:'cf-ST-S'}},
-  balanced:{name:'Balanced',formation:'4-2-3-1 DM wide',hint:'A balanced double pivot with a creator between the lines and varied wide attackers.',roles:{GK:'gk-GK-D',DL:'fb-DLR-S',DCL:'cd-DC-D',DCR:'bpd-DC-D',DR:'fb-DLR-S',DMCL:'dm-DM-D',DMCR:'dlp-DM-D',AML:'iw-AMLR-S',AMC:'ap-AMC-S',AMR:'if-AMLR-A',ST:'af-ST-A'}},
-  direct:{name:'Direct play',formation:'4-4-2',hint:'A direct two-striker shape: wide service, a target forward and a runner attacking beyond.',roles:{GK:'gk-GK-D',DL:'fb-DLR-D',DCL:'nncb-DC-D',DCR:'cd-DC-D',DR:'fb-DLR-D',ML:'wm-MLR-S',MCL:'bwm-MC-D',MCR:'cm-MC-A',MR:'wm-MLR-S',STCL:'tf-ST-S',STCR:'af-ST-A'}}
-};
-function applyTacticStyle(key){
-  const p = TACTIC_STYLES[key]; if (!p) return;
-  S.tac.formation = p.formation; S.tac.roles = {};
-  (FORMATIONS[p.formation] || []).forEach(c => { const id = p.roles[c]; S.tac.roles[c] = roleById[id] && roleById[id].strata === SLOT[c].s ? id : fallbackRole(SLOT[c].s); });
-  $('formsel').value = S.tac.formation; $('stylehint').textContent = p.hint;
-  renderSlots(); renderTactic();
-}
+function tacticList(){ if (!S.save.tactics || !S.save.tactics.length) S.save.tactics = [Object.assign({id:'t1'}, JSON.parse(JSON.stringify(DEFAULT_TACTIC)))]; return S.save.tactics; }
 function fillTacticUI(){
-  const ts = tacticList(); if (!S.tac || !ts.find(t => t.id === S.tac.id)) S.tac = normalizeTactic(ts[0]); else S.tac = normalizeTactic(S.tac);
-  $('tacsel').innerHTML = ts.map(t => `<option value="${esc(t.id)}"${t.id===S.tac.id?' selected':''}>${esc(t.name)}</option>`).join('');
-  $('formsel').innerHTML = Object.keys(FORMATIONS).map(f => `<option value="${esc(f)}"${f===S.tac.formation?' selected':''}>${esc(f)}</option>`).join('');
+  const ts = tacticList(); if (!S.tac || !ts.find(t => t.id === S.tac.id)) S.tac = JSON.parse(JSON.stringify(ts[0]));
+  $('tacsel').innerHTML = ts.map(t => `<option value="${t.id}"${t.id===S.tac.id?' selected':''}>${esc(t.name)}</option>`).join('');
+  $('formsel').innerHTML = Object.keys(FORMATIONS).map(f => `<option${f===S.tac.formation?' selected':''}>${f}</option>`).join('');
   const lg = [...S.season.leagues].sort((a,b) => ((REP.get(norm(b))||{stars:0}).stars - (REP.get(norm(a))||{stars:0}).stars) || a.localeCompare(b));
   const prevL = $('xileague').value || S.save.myLeague || lg[0];
   $('xileague').innerHTML = lg.map(d => `<option value="${esc(d)}"${d===prevL?' selected':''}>${esc(d)}</option>`).join('');
-  const gs = Array.isArray(S.save.groups) ? S.save.groups : [], prevG = $('grpsel').value;
-  $('grpsel').innerHTML = '<option value="">Use selected league</option>' + gs.map((g,i) => `<option value="${i}"${String(i)===prevG?' selected':''}>${esc(g.name)}</option>`).join('');
-  $('tacsave').disabled = !S.tac; $('tacdel').disabled = ts.length < 2;
+  const gs = S.save.groups || [], prevG = $('grpsel').value;
+  $('grpsel').innerHTML = '<option value="">Benchmark: the selected league</option>' + gs.map((g,i) => `<option value="${i}"${String(i)===prevG?' selected':''}>Benchmark: ${esc(g.name)}</option>`).join('');
   renderSlots();
 }
 function renderSlots(){
-  const codes = FORMATIONS[S.tac.formation] || FORMATIONS[DEFAULT_TACTIC.formation];
-  codes.forEach(c => { const current = roleById[S.tac.roles[c]]; if (!current || current.strata !== SLOT[c].s) S.tac.roles[c] = fallbackRole(SLOT[c].s); });
+  const codes = FORMATIONS[S.tac.formation];
+  codes.forEach(c => { if (!S.tac.roles[c] || roleById[S.tac.roles[c]].strata !== SLOT[c].s){ const def = ROLES.find(r => r.strata === SLOT[c].s); S.tac.roles[c] = def.id; } });
   $('slots').innerHTML = codes.map(c => `<div class="slotrow"><b>${SLOT_LABEL[c]}</b><select data-slot="${c}">${ROLES.filter(r => r.strata === SLOT[c].s).map(r => `<option value="${r.id}"${r.id===S.tac.roles[c]?' selected':''}>${esc(r.name)}, ${esc(r.dutyName.toLowerCase())}</option>`).join('')}</select></div>`).join('');
 }
-$('slots').addEventListener('change', e => { const el = e.target.closest('select[data-slot]'); if (!el) return; S.tac.roles[el.dataset.slot] = el.value; renderTactic(); });
-$('tacsel').onchange = () => { const chosen = tacticList().find(t => t.id === $('tacsel').value); S.tac = normalizeTactic(chosen || tacticList()[0]); $('formsel').value = S.tac.formation; renderSlots(); renderTactic(); };
-$('formsel').onchange = () => { S.tac.formation = $('formsel').value; S.tac.roles = normalizeTactic(S.tac).roles; renderSlots(); renderTactic(); };
-$('applystyle').onclick = () => applyTacticStyle($('stylepreset').value);
+$('slots').addEventListener('change', e => { const s = e.target.closest('select[data-slot]'); if (!s) return; S.tac.roles[s.dataset.slot] = s.value; renderTactic(); });
+$('tacsel').onchange = () => { S.tac = JSON.parse(JSON.stringify(tacticList().find(t => t.id === $('tacsel').value))); renderSlots(); renderTactic(); };
+$('formsel').onchange = () => { S.tac.formation = $('formsel').value; renderSlots(); renderTactic(); };
 ['xiscope','xileague','ximins','grpsel'].forEach(id => $(id).addEventListener(id === 'ximins' ? 'input' : 'change', renderTactic));
-$('tacnew').onclick = async () => { const name = await ask({title:'Save as new tactic', input:S.tac.name || S.tac.formation, label:'Tactic name', ok:'Save new tactic'}); if (!name) return; const t = normalizeTactic(S.tac); t.id = 't' + Date.now().toString(36); t.name = name; tacticList().push(t); S.tac = normalizeTactic(t); await persist(); fillTacticUI(); renderTactic(); toast('New tactic saved'); };
-$('tacsave').onclick = async () => { const ts = tacticList(), i = ts.findIndex(t => t.id === S.tac.id); if (i < 0){ toast('Save this as a new tactic first'); return; } ts[i] = normalizeTactic(S.tac); await persist(); fillTacticUI(); toast('Tactic changes saved'); };
-$('tacdel').onclick = async () => { const ts = tacticList(); if (ts.length < 2){ toast('The last saved tactic is kept as a fallback'); return; } if (!(await ask({title:'Delete this tactic?', text:'It is removed from this save. The remaining tactics will stay available.', ok:'Delete', danger:true}))) return; S.save.tactics = ts.filter(t => t.id !== S.tac.id); S.tac = normalizeTactic(S.save.tactics[0]); await persist(); fillTacticUI(); renderTactic(); };
+$('tacnew').onclick = async () => { const name = await ask({title:'New tactic', input:S.tac.formation, label:'Name', ok:'Create tactic'}); if (!name) return; const t = JSON.parse(JSON.stringify(S.tac)); t.id = 't' + Date.now().toString(36); t.name = name; tacticList().push(t); S.tac = JSON.parse(JSON.stringify(t)); await persist(); fillTacticUI(); renderTactic(); toast('Tactic created'); };
+$('tacsave').onclick = async () => { const ts = tacticList(); const i = ts.findIndex(t => t.id === S.tac.id); ts[i] = JSON.parse(JSON.stringify(S.tac)); await persist(); toast('Tactic saved'); };
+$('tacdel').onclick = async () => { const ts = tacticList(); if (ts.length < 2){ toast('Keep at least one tactic'); return; } if (!(await ask({title:'Delete this tactic?', text:'It is removed from this save.', ok:'Delete', danger:true}))) return; S.save.tactics = ts.filter(t => t.id !== S.tac.id); S.tac = null; await persist(); fillTacticUI(); renderTactic(); };
 function surname(n){ const a = String(n||'').split(' '); return a.length > 1 ? a.slice(1).join(' ') : a[0]; }
 function scoreColor(sc){ if (sc == null) return '#3A3A40'; return pctCol(sc); const t = 0, a = [], b = []; return `rgb(${a.map((x,i) => Math.round(x + (b[i]-x)*t)).join(',')})`; }
 function pitchSVG(xi, showClub){
@@ -3821,12 +3785,11 @@ function pitchSVG(xi, showClub){
 function renderTactic(){
   if (!S.season || S.tab !== 'tactic') return;
   const scope = $('xiscope').value, minM = num($('ximins').value) || 0, lg = $('xileague').value, gi = $('grpsel').value, groups = S.save.groups || [];
-  $('xileaguewrap').style.display = scope === 'league' || (scope === 'group' && gi === '') ? '' : 'none';
-  $('grpsel').parentElement.style.display = scope === 'group' ? '' : 'none';
+  $('xileaguewrap').style.display = scope === 'league' || (scope !== 'group' && gi === '') ? '' : (scope === 'league' ? '' : '');
   let players = [], title = '';
   if (scope === 'mine'){ players = S.season.players.filter(p => p.club === S.save.myClub); title = S.save.myClub ? `${S.save.myClub}: best XI` : 'Set your club in Save settings'; }
   else if (scope === 'league'){ players = S.season.players.filter(p => p.div === lg); title = `${lg}: best XI`; }
-  else { const g = gi !== '' ? groups[+gi] : null; if (g){ const cs = new Set(g.clubs); players = S.season.players.filter(p => cs.has(p.club)); title = `${g.name}: best XI across the group`; } else title = 'Choose a comparison group above'; }
+  else { const g = groups[+gi]; if (g){ const cs = new Set(g.clubs); players = S.season.players.filter(p => cs.has(p.club)); title = `${g.name}: best XI across the group`; } else title = 'Choose a comparison group in the benchmark menu'; }
   const xi = scope === 'mine' ? bestXIP(players, S.tac, minM, xiPins(S.tac)) : bestXI(players, S.tac, minM);
   $('pitchtitle').textContent = title; $('pitch').innerHTML = pitchSVG(xi, scope !== 'mine');
   // Benchmarks
@@ -3857,7 +3820,7 @@ function renderBench(){
   S.season.players.forEach(p => { if (p.mins >= minM && inStrata(p, role.strata)){ const sc = roleScore(p, role); if (sc != null) (by[p.div] = by[p.div] || []).push({p, sc}); } });
   let myBest = null;
   if (S.save.myClub){ const sq = S.season.players.filter(p => p.club === S.save.myClub && inStrata(p, role.strata) && p.mins >= Math.min(minM, 450)).map(p => ({p, sc:roleScore(p, role)})).filter(d => d.sc != null).sort((a,b) => b.sc-a.sc); myBest = sq[0] || null; }
-  const activeTac = normalizeTactic(curTac() || tacticList()[0]), activeCodes = FORMATIONS[activeTac.formation] || [];
+  const activeTac = S.tac || tacticList()[0], activeCodes = FORMATIONS[activeTac.formation] || [];
   const matchingSlots = activeCodes.filter(code => activeTac.roles[code] === role.id);
   const coverageMin = Math.min(minM, 450);
   const clubPool = S.save.myClub ? S.season.players.filter(p => p.club === S.save.myClub && p.mins >= coverageMin && (listedFor(p, role) || phPos(role).some(st => inStrata(p, st))))
