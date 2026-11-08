@@ -1840,7 +1840,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     <div class="pagehead"><div><h1>Leagues</h1><p>Every league in this season, with reputation from the in-game rankings compared with yours.</p></div></div>
     <div class="panel">
       <div class="lgnote" id="lgnote" role="note" hidden></div>
-      <div class="grp"><div class="tablewrap"><table><thead><tr><th>League</th><th>Reputation</th><th>Level against yours</th><th class="num">Players</th><th class="num">Median value</th><th>Note</th></tr></thead><tbody id="lgbody"></tbody></table></div></div>
+      <div class="grp"><p class="hint" style="margin:0 0 10px">Set a league-specific strength multiplier for attacking volume stats. Leave a field blank to use the automatic reputation-based estimate. 1.00 is unchanged; 1.10 scales the measured output up by 10%. These adjustments only affect the adjusted view, not raw figures, minutes, percentages, wages, values or contract data.</p><div class="tablewrap"><table><thead><tr><th>League</th><th>Reputation</th><th>Level against yours</th><th class="num">Players</th><th class="num">Median value</th><th>Multiplier</th><th>Note</th></tr></thead><tbody id="lgbody"></tbody></table></div></div>
     </div>
   </section>
 
@@ -2847,7 +2847,18 @@ function steps(p){ const m = myStars(); return (p.rep && m != null) ? Math.round
 function bandOf(st){ if (st == null) return null; return st >= 2 ? 2 : st <= -2 ? -2 : st; }
 function bandHtml(st){ const b = bandOf(st); return b == null ? '<span class="lvl b-2">Unrated</span>' : `<span class="lvl b${b}">${BANDS[b]}</span>`; }
 function adjSig(){ return $('adj').checked ? myStars() + '|' + (num($('adjrate').value) || 0) : '0'; }
-function factor(p){ if (!$('adj').checked) return 1; const st = steps(p); if (st == null) return 1; const r = Math.max(0, Math.min(30, num($('adjrate').value) || 0)) / 100; return Math.pow(1 + r, st); }
+function defaultLeagueFactor(div){
+  const rep = REP.get(norm(div)), mine = myStars();
+  if (!rep || mine == null) return 1;
+  const st = Math.round((rep.stars - mine) / 0.5);
+  const r = Math.max(0, Math.min(30, num($('adjrate').value) || 0)) / 100;
+  return Math.pow(1 + r, st);
+}
+function leagueFactor(div){
+  const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(div)];
+  return custom != null && isFinite(+custom) ? Math.max(0.25, Math.min(3, +custom)) : defaultLeagueFactor(div);
+}
+function factor(p){ return !$('adj').checked ? 1 : leagueFactor(p.div); }
 function statVal(p, key){ const v = p.s[key]; if (v == null) return null; return ADJUSTABLE.has(key) ? v * factor(p) : v; }
 const pctCache = new Map(); const scoreCache = new Map(); const GP = new Map(), IDXC = new Map();
 function clearCaches(){ PHC.clear(); XIC.clear(); DOFC.clear(); pctCache.clear(); scoreCache.clear(); POOLC.clear(); GP.clear(); IDXC.clear(); if (typeof PRC !== 'undefined') PRC.clear(); }
@@ -3807,8 +3818,30 @@ function renderLeagues(){
       if (ratio < 0.4) note = 'Players valued well below the rest of its tier. Its reputation may flatter it, or low wages may depress values.';
       else if (ratio > 2.5) note = 'Players valued well above the rest of its tier. Either it is stronger than its reputation, or money in the league inflates values.'; }
     const st = (l.rep && ms != null) ? Math.round((l.rep.stars - ms)/0.5) : null;
-    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.rep?starsTxt(l.rep.stars):'–'}<div class="pclub">${l.rep?`${esc(l.rep.region)}, ${ordinal(l.rep.rank)}`:''}</div></td><td>${l.d===my?'<span class="lvl">Your league</span>':bandHtml(st)}</td><td class="num">${l.n}</td><td class="num">${money(l.med)}</td><td class="pclub" style="max-width:320px">${lim[l.d] ? `<span class="limtag" title="Missing here: ${esc(fam(l.d).join(', '))}">${warn_icon()}Limited stats</span> ` : ''}${note}</td></tr>`; }).join('');
+    const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(l.d)];
+    const automatic = defaultLeagueFactor(l.d);
+    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.rep?starsTxt(l.rep.stars):'–'}<div class="pclub">${l.rep?`${esc(l.rep.region)}, ${ordinal(l.rep.rank)}`:''}</div></td><td>${l.d===my?'<span class="lvl">Your league</span>':bandHtml(st)}</td><td class="num">${l.n}</td><td class="num">${money(l.med)}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="${automatic.toFixed(2)}" title="Automatic: ${automatic.toFixed(2)}. Enter 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"></td><td class="pclub" style="max-width:320px">${lim[l.d] ? `<span class="limtag" title="Missing here: ${esc(fam(l.d).join(', '))}">${warn_icon()}Limited stats</span> ` : ''}${note}</td></tr>`; }).join('');
 }
+
+document.addEventListener('change', async e => {
+  const input = e.target.closest('[data-league-factor]');
+  if (!input || !S.save) return;
+  const key = input.dataset.leagueFactor, raw = input.value.trim();
+  if (!raw) delete S.save.leagueFactors[key];
+  else {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0.25 || value > 3){
+      toast('Multiplier must be between 0.25 and 3.00');
+      input.value = '';
+      return;
+    }
+    S.save.leagueFactors[key] = Math.round(value * 100) / 100;
+  }
+  clearCaches();
+  await persist();
+  renderLeagues();
+  toast(raw ? 'League multiplier saved' : 'Automatic league multiplier restored');
+});
 
 /* ---------------- Season progress ---------------- */
 // Moves the pool floor and the minute defaults that still sit on the old floor; filters the user changed are left alone
@@ -4302,6 +4335,7 @@ window.addEventListener('pagehide', () => { flushAll(); });
 function gamesFor(league){ const l = String(league || ''); if (/championship|league one|league two/i.test(l)) return 46; if (/bundesliga|eredivisie|ligue 1|ligue 2|pro league|liga portugal/i.test(l)) return 34; return 38; }
 function ensureSaveDefaults(s){
   if (!s) return; const ss = seasonsSorted(s);
+  s.leagueFactors = s.leagueFactors && typeof s.leagueFactors === 'object' ? s.leagueFactors : {};
   if (!s.startSeason) s.startSeason = ss.length ? ss[0].label : slabel(new Date().getFullYear());
   if (!s.currentSeason) s.currentSeason = ss.length ? ss[ss.length - 1].label : s.startSeason;
   if (!s.games) s.games = gamesFor(s.myLeague);
