@@ -2564,8 +2564,37 @@ function processSeason(obj, label, opts){
   const T = new Set(obj.text || []);
   const gaps = opts && opts.checkLeagues ? leagueGaps(obj) : {}, gapSet = Object.fromEntries(Object.entries(gaps).map(([d, a]) => [d, new Set(a)]));
   const end = seasonEnd(label);
+  // Build identity counts before creating player objects. UID is the only
+  // cross-club identity; name/club is a cautious within-export fallback.
+  const uidIndex = idx['UID'], nameIndex = idx['Name'], clubIndex = idx['Club'];
+  const uidCounts = new Map(), fallbackCounts = new Map();
+  obj.rows.forEach(r => {
+    const uid = uidIndex != null ? String(r[uidIndex] || '').trim() : '';
+    if (uid) uidCounts.set(uid, (uidCounts.get(uid) || 0) + 1);
+    else {
+      const fallback = [r[nameIndex] || '', r[clubIndex] || ''].map(x => String(x).trim().toLocaleLowerCase()).join('|');
+      fallbackCounts.set(fallback, (fallbackCounts.get(fallback) || 0) + 1);
+    }
+  });
+  const uidSeen = new Map(), fallbackSeen = new Map();
+  const identityDiagnostics = {duplicateUIDs:[], duplicateFallbacks:[], rowsWithoutUID:0};
+  uidCounts.forEach((count, uid) => { if (count > 1) identityDiagnostics.duplicateUIDs.push({uid,count}); });
+  fallbackCounts.forEach((count, fallback) => { if (count > 1) identityDiagnostics.duplicateFallbacks.push({fallback,count}); });
+  identityDiagnostics.rowsWithoutUID = obj.rows.length - [...uidCounts.values()].reduce((a,b)=>a+b,0);
   const players = obj.rows.map((r, i) => {
     const g = k => idx[k] != null ? r[idx[k]] : null;
+    const uid = uidIndex != null ? String(g('UID') || '').trim() : '';
+    let identityKey, identityType;
+    if (uid) {
+      const occurrence = (uidSeen.get(uid) || 0) + 1; uidSeen.set(uid, occurrence);
+      identityKey = uidCounts.get(uid) === 1 ? uid : uid + '#duplicate-row-' + (i + 1);
+      identityType = uidCounts.get(uid) === 1 ? 'fm-uid' : 'duplicate-fm-uid';
+    } else {
+      const fallback = [g('Name') || '', g('Club') || ''].map(x => String(x).trim().toLocaleLowerCase()).join('|');
+      const occurrence = (fallbackSeen.get(fallback) || 0) + 1; fallbackSeen.set(fallback, occurrence);
+      identityKey = (g('Name') + '|' + g('Club')) + (fallbackCounts.get(fallback) > 1 ? '#duplicate-row-' + (i + 1) : '');
+      identityType = fallbackCounts.get(fallback) > 1 ? 'ambiguous-fallback' : 'name-club-fallback';
+    }
     const s = {}, gp = gapSet[idx['Division'] != null ? r[idx['Division']] || '' : ''];
     C.forEach((c,j) => { if (!T.has(c)) s[c] = gp && gp.has(c) ? null : (typeof r[j] === 'number' ? r[j] : num(r[j])); });
     const mins = s['Mins'];
@@ -2602,7 +2631,7 @@ function processSeason(obj, label, opts){
     s['Start rate'] = s['Apps'] ? z('Starts') / s['Apps'] : null; s['Mins/App'] = s['Apps'] ? mins / s['Apps'] : null; s['PoM/Start'] = s['Starts'] ? z('PoM') / s['Starts'] : null;
     if (gp) Object.entries(DERIV_DEPS).forEach(([k, deps]) => { if (deps.some(d => gp.has(d))) s[k] = null; });
     const div = g('Division') || '';
-    return {i, key: g('UID') || (g('Name') + '|' + g('Club')), name:g('Name'), pos:g('Position'), club:g('Club'), div, nat:g('Nat'), nat2:g('2nd Nat'),
+    return {i, key:identityKey, identityType, uid:uid || null, name:g('Name'), pos:g('Position'), club:g('Club'), div, nat:g('Nat'), nat2:g('2nd Nat'),
       hg:g('Home-Grown Status'), pers:g('Personality'), foot:g('Preferred Foot'), fk:footKey(g('Preferred Foot')), height:g('Height'), inch:inches(g('Height')),
       age:num(g('Age')) ?? s['Age'], mins, val:moneyMax(g('Transfer Value')), tv:g('Transfer Value'), wage:moneyMax(g('Wage')), wageTxt:g('Wage'),
       expires:g('Expires'), expY:expiryYears(g('Expires'), end), s, slots:slots(g('Position')), rep:REP.get(norm(div)) || null};
@@ -2610,7 +2639,7 @@ function processSeason(obj, label, opts){
   const usable = Object.keys(SMETA).filter(k => players.some(p => p.s[k] != null)).filter(k => {
     const v = players.map(p => p.s[k]).filter(x => x != null); if (v.length < 20) return false;
     if (v.every(x => x === v[0])) return false; if ((k === 'Sv %' || k === 'xSv %') && v.some(x => x < 0)) return false; return true; });
-  return {label, end, players, usable, leagues:[...new Set(players.map(p => p.div).filter(Boolean))], limited:gaps, appsOld: obj.apps !== 2 && C.includes('Apps')};
+  return {label, end, players, usable, leagues:[...new Set(players.map(p => p.div).filter(Boolean))], limited:gaps, identityDiagnostics, appsOld: obj.apps !== 2 && C.includes('Apps')};
 }
 
 /* ---------------- Scoring ---------------- */
