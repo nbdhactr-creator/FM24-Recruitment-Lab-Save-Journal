@@ -1560,6 +1560,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="bench" title="Benchmarks"><svg viewBox="0 0 20 20"><path d="M4 16V4h9l-1.5 3L13 10H4"/></svg><span class="lbl">Benchmarks</span></button>
   <div class="ng">My club</div>
   <button class="ni" type="button" data-tab="tactic" title="Tactic &amp; best XI"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h3M14 10h3"/><circle cx="10" cy="10" r="2.2"/></svg><span class="lbl">Tactic &amp; best XI</span></button>
+  <button class="ni" type="button" data-tab="teamcompare" title="Team comparison"><svg viewBox="0 0 20 20"><path d="M3 16V5h5v11M12 16V3h5v13M1.5 16.5h17"/></svg><span class="lbl">Team comparison</span></button>
   <button class="ni" type="button" data-tab="teams" title="Team intelligence"><svg viewBox="0 0 20 20"><path d="M2.5 17V8l4-3 3.5 3v9M10 17V5l3-2 4.5 3v11M5 17v-3h3v3M13 9h2M13 12h2"/></svg><span class="lbl">Team intelligence</span></button>
   <button class="ni" type="button" data-tab="clubs" title="Club finder"><svg viewBox="0 0 20 20"><path d="M10 2.5 16.5 5v5c0 4-2.8 6.6-6.5 8-3.7-1.4-6.5-4-6.5-8V5z"/><path d="M7.2 10.2 9.2 12l3.8-4"/></svg><span class="lbl">Club finder</span></button>
   <button class="ni" type="button" data-tab="philo" title="Philosophy score"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r=".7"/></svg><span class="lbl">Philosophy score</span></button>
@@ -1812,6 +1813,12 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <div class="tablewrap"><table class="bench"><thead id="bhead"></thead><tbody id="bbody"></tbody></table></div>
       </div>
     </div>
+  </section>
+
+  <!-- MY CLUB TEAM COMPARISON -->
+  <section class="view" id="v-teamcompare" hidden>
+    <div class="pagehead"><div><h1>Team comparison</h1><p>Compare each role in your selected club against players available across every imported club and competition.</p></div></div>
+    <div id="teamcompare-root"></div>
   </section>
 
   <!-- BENCHMARKS -->
@@ -2691,7 +2698,7 @@ function processSeason(obj, label, opts){
 }
 
 /* ---------------- Team intelligence ---------------- */
-let TI = {q:'', league:'', selected:'', rosterSort:'mins-desc', compareA:'', compareB:''};
+let TI = {q:'', league:'', selected:'', rosterSort:'mins-desc'};
 function teamRows(){
   if (!S.season) return [];
   const by = new Map();
@@ -2713,15 +2720,6 @@ function teamRows(){
 function tiPositionDepth(team){
   const groups=[['GK',p=>p.slots.has('GK')],['DEF',p=>[...p.slots].some(x=>x.startsWith('D-'))],['MID',p=>[...p.slots].some(x=>x==='DM'||x.startsWith('M-')||x.startsWith('AM-'))],['FWD',p=>p.slots.has('ST')]];
   return groups.map(([label,test])=>({label,players:team.players.filter(test)}));
-}
-function tiCompareMarkup(teams){
-  const key=t=>norm(t.club)+'|'+norm(t.div);
-  const a=teams.find(t=>key(t)===TI.compareA)||teams[0], b=teams.find(t=>key(t)===TI.compareB)||teams.find(t=>t!==a);
-  if(!a||!b)return '<p class="empty">Import at least two club squads to compare them.</p>';
-  const rows=[['Players',t=>t.n,v=>String(v)],['Average age',t=>t.avgAge,v=>v.toFixed(1)],['Average rating',t=>t.avgRating,v=>v.toFixed(2)],['Total minutes',t=>t.totalMins,v=>Math.round(v).toLocaleString()],['Squad value',t=>t.value,v=>money(v)],['Weekly wage bill',t=>t.wage,v=>money(v)]];
-  const da=tiPositionDepth(a),db=tiPositionDepth(b);
-  const label=t=>t.club+' — '+(t.div||'Unknown competition');
-  return `<div class="ti-compare-controls"><div class="field"><label for="ti-compare-a">Search Club A</label><input id="ti-compare-a" type="search" list="ti-compare-team-options" value="${esc(label(a))}" placeholder="Type a club name…"></div><div class="field"><label for="ti-compare-b">Search Club B</label><input id="ti-compare-b" type="search" list="ti-compare-team-options" value="${esc(label(b))}" placeholder="Type a club name…"></div></div><datalist id="ti-compare-team-options">${teams.map(t=>`<option value="${esc(label(t))}"></option>`).join('')}</datalist><div class="ti-compare-grid"><div></div><div class="ti-compare-club"><b>${esc(a.club)}</b><small>${esc(a.div||'Competition not supplied')}</small></div><div class="ti-compare-club"><b>${esc(b.club)}</b><small>${esc(b.div||'Competition not supplied')}</small></div>${rows.map(([label,get,show])=>`<div class="ti-compare-label">${label}</div><div>${get(a)==null?'—':show(get(a))}</div><div>${get(b)==null?'—':show(get(b))}</div>`).join('')}<div class="ti-compare-label">Positional depth</div><div class="ti-depth-list">${da.map(d=>`<span><b>${d.label}</b> ${d.players.length}</span>`).join('')}</div><div class="ti-depth-list">${db.map(d=>`<span><b>${d.label}</b> ${d.players.length}</span>`).join('')}</div></div><p class="hint">Position groups count players whose exported positions include that group. Players can appear in more than one group; counts do not imply starter quality.</p>`;
 }
 function tiRosterSorted(players){
   const [key,dir] = (TI.rosterSort||'mins-desc').split('-');
@@ -2750,7 +2748,6 @@ function renderTeamIntelligence(){
   root.innerHTML=`<div class="rl-ph"><div><h1 class="cf-h1">Team intelligence</h1><p class="cf-sub">Squad profiles derived from the imported ${esc(S.season.label)} player export. Missing data is not treated as zero.</p></div></div>
   ${!S.save.myClub&&saveMatch.length===1?`<div class="panel" style="padding:14px 18px;margin-bottom:12px">Possible My Club match from save name: <b>${esc(saveMatch[0].club)}</b>. <button class="btn sm" type="button" data-ti-set="${esc(saveMatch[0].club)}">Confirm as My Club</button></div>`:''}
   <section class="panel" style="padding:14px 18px;margin-bottom:12px"><div class="grid g2"><div class="field"><label for="ti-q">Search clubs or competitions</label><input id="ti-q" type="search" value="${esc(TI.q)}" placeholder="Search teams…"></div><div class="field"><label for="ti-league">Competition</label><select id="ti-league"><option value="">All competitions</option>${leagues.map(l=>`<option value="${esc(l)}"${l===TI.league?' selected':''}>${esc(l)}</option>`).join('')}</select></div></div><p class="hint" style="margin:8px 0 0">${list.length} of ${all.length} club/competition squads · ${all.reduce((n,t)=>n+t.n,0).toLocaleString()} imported player rows</p></section>
-  <section class="panel ti-compare-panel"><h2>Team comparison</h2><p class="hint">Search for two imported clubs to compare their available squad data.</p>${tiCompareMarkup(all)}</section>
   <div class="ti-layout">
   <section class="panel ti-team-panel"><div class="ti-team-head"><span>Club / competition</span><span>Players</span><span>Avg age</span><span>Avg rat.</span><span>Coverage</span></div>
   ${list.map(t=>`<button type="button" class="ti-team-row" data-ti-key="${esc(norm(t.club)+'|'+norm(t.div))}" aria-pressed="${norm(t.club)+'|'+norm(t.div)===TI.selected?'true':'false'}"><span class="ti-team-name"><b>${esc(t.club)}</b><small>${esc(t.div||'Competition not supplied')}${norm(t.club)===norm(S.save.myClub)?' · MY CLUB':''}</small></span><span><small class="ti-metric-label">Players</small><b>${t.n}</b></span><span><small class="ti-metric-label">Avg age</small>${metric(t.avgAge,v=>v.toFixed(1))}</span><span><small class="ti-metric-label">Avg rat.</small>${metric(t.avgRating,v=>v.toFixed(2))}</span><span><small class="ti-metric-label">Coverage</small>${t.coverage}</span></button>`).join('')||'<p class="empty">No clubs match these filters.</p>'}</section>
@@ -2763,12 +2760,59 @@ function renderTeamIntelligence(){
   q.oninput=()=>{const value=q.value, caret=q.selectionStart;TI.q=value;renderTeamIntelligence();const next=$('ti-q');next.focus();next.setSelectionRange(caret,caret);};
   lg.onchange=()=>{TI.league=lg.value;renderTeamIntelligence();};
   if(rs) rs.onchange=()=>{TI.rosterSort=rs.value;renderTeamIntelligence();};
-  const compareKeyForInput=input=>{const match=all.find(t=>t.club+' — '+(t.div||'Unknown competition')===input.value);return match?norm(match.club)+'|'+norm(match.div):null;};
-  const ca=$('ti-compare-a'), cb=$('ti-compare-b');
-  if(ca){ca.oninput=()=>ca.setCustomValidity('');ca.onchange=()=>{const key=compareKeyForInput(ca);if(key){TI.compareA=key;renderTeamIntelligence();}else{ca.setCustomValidity('Choose a club from the suggestions.');ca.reportValidity();}};}
-  if(cb){cb.oninput=()=>cb.setCustomValidity('');cb.onchange=()=>{const key=compareKeyForInput(cb);if(key){TI.compareB=key;renderTeamIntelligence();}else{cb.setCustomValidity('Choose a club from the suggestions.');cb.reportValidity();}};}
   root.querySelectorAll('[data-ti-key]').forEach(b=>b.onclick=()=>{TI.selected=b.dataset.tiKey;renderTeamIntelligence();});
   root.querySelectorAll('[data-ti-set]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSet;await persist();renderTeamIntelligence();toast('My Club confirmed');});
+}
+
+/* ---------------- My Club: squad vs market ---------------- */
+const TC = {role:'', minM:450, q:'', limit:100};
+function tcClubKey(club, div){ return norm(club)+'|'+norm(div); }
+function tcMoney(v){ return v==null?'—':money(v); }
+function tcPlayerMeta(p){
+  return [p.club||'Club unknown',p.div||'Competition unknown',p.age==null?'Age —':'Age '+p.age,
+    p.mins==null?'Minutes —':Math.round(p.mins).toLocaleString()+'m'].join(' · ');
+}
+async function renderTeamComparison(){
+  const root=$('teamcompare-root'); if(!root || S.tab!=='teamcompare' || !S.season) return;
+  await mgr(); if(S.tab!=='teamcompare') return;
+  const teams=teamRows(), mine=teams.filter(t=>norm(t.club)===norm(S.save.myClub));
+  const focus=mine.length===1?mine[0]:null;
+  const tac=S.tac || tacticList()[0], codes=FORMATIONS[tac.formation]||[];
+  if(!TC.role || !codes.some(c=>tac.roles[c]===TC.role)) TC.role=tac.roles[codes[0]];
+  const selectedRole=roleById[TC.role]||roleById[tac.roles[codes[0]]];
+  const slots=codes.map(c=>({code:c,role:roleById[tac.roles[c]]})).filter(x=>x.role);
+  const options=slots.map(x=>'<option value="'+esc(x.role.id)+'"'+(x.role.id===TC.role?' selected':'')+'>'+esc(SLOT_LABEL[x.code]+' — '+roleTitle(x.role))+'</option>').join('');
+  const clubs=[...new Set(S.season.players.map(p=>p.club).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const selectedClub=focus?focus.club:(S.save.myClub||'');
+  const players=selectedClub?S.season.players.filter(p=>norm(p.club)===norm(selectedClub)):[];
+  const eligible=p=>listedFor(p,selectedRole) || phPos(selectedRole).some(st=>inStrata(p,st));
+  const scored=players.filter(p=>eligible(p)&&p.mins>=TC.minM).map(p=>({p,score:roleScore(p,selectedRole),ph:philoOf(p,selectedRole)?.v})).filter(x=>x.score!=null).sort((a,b)=>b.score-a.score);
+  const incumbent=scored[0]||null;
+  const query=norm(TC.q);
+  const market=S.season.players.filter(p=>norm(p.club)!==norm(selectedClub)&&eligible(p)&&p.mins>=TC.minM&&(!query||norm(p.name).includes(query)||norm(p.club).includes(query)||norm(p.div).includes(query)))
+    .map(p=>({p,score:roleScore(p,selectedRole),ph:philoOf(p,selectedRole)?.v}))
+    .filter(x=>x.score!=null).sort((a,b)=>b.score-a.score||((b.ph??-1)-(a.ph??-1)));
+  const visible=market.slice(0,Math.max(1,TC.limit));
+  const band=v=>v==null?'<span class="rl-sub">Insufficient data</span>':phChip(v);
+  const candidateRows=visible.map((x,i)=>{
+    const delta=incumbent?x.score-incumbent.score:null;
+    const d=delta==null?'—':(delta>0?'+':'')+delta;
+    const retrain=listedFor(x.p,selectedRole)?'':' · Position conversion';
+    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(x.p.name||'Unknown player')+'</b><small class="rl-sub" style="display:block">'+esc(tcPlayerMeta(x.p))+esc(retrain)+'</small></td><td class="num">'+x.score+'</td><td>'+band(x.ph)+'</td><td class="num">'+d+'</td><td class="num">'+(x.p.age??'—')+'</td><td class="num">'+(x.p.mins==null?'—':Math.round(x.p.mins).toLocaleString())+'</td><td>'+tcMoney(x.p.val)+'</td><td>'+tcMoney(x.p.wage)+'</td><td>'+(x.p.exp||'—')+'</td></tr>';
+  }).join('');
+  root.innerHTML='<section class="panel" style="padding:16px 18px;margin-bottom:12px"><div class="grid g4"><div class="field"><label>Focus club</label><select id="tc-club">'+clubs.map(c=>'<option value="'+esc(c)+'"'+(norm(c)===norm(selectedClub)?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></div><div class="field"><label>Active tactic</label><div style="padding:10px 0"><b>'+esc(tac.name||'Current tactic')+'</b><small class="rl-sub" style="display:block">'+esc(tac.formation)+'</small></div></div><div class="field"><label for="tc-role">Tactical role</label><select id="tc-role">'+options+'</select></div><div class="field"><label for="tc-mins">Minimum minutes</label><input id="tc-mins" type="number" min="0" step="50" value="'+TC.minM+'"></div></div><p class="hint" style="margin:8px 0 0">The selected club is evaluated against the active save tactic and your configured Philosophy Score. Other clubs’ own tactics are not inferred from player exports.</p></section>'+
+  (!selectedClub?'<section class="panel"><p class="empty">Set My Club in your save settings, or select a focus club above.</p></section>':'')+
+  '<section class="panel" style="padding:16px 18px;margin-bottom:12px"><h2 style="margin-top:0">Role assessment</h2><p class="hint">'+esc(selectedRole?roleTitle(selectedRole):'Choose a role')+' · '+players.length+' imported squad rows for '+esc(selectedClub||'No club selected')+'</p>'+
+  (incumbent?'<div class="grid g4"><div><small class="rl-sub">Best eligible player</small><h3>'+esc(incumbent.p.name)+'</h3><small>'+esc(tcPlayerMeta(incumbent.p))+'</small></div><div><small class="rl-sub">Role score</small><h2>'+incumbent.score+'/100</h2></div><div><small class="rl-sub">Philosophy compatibility</small><h3>'+ (incumbent.ph==null?'Insufficient data':incumbent.ph+'/100')+'</h3>'+band(incumbent.ph)+'</div><div><small class="rl-sub">Role coverage</small><h3>'+scored.length+' eligible players</h3><small>At least '+TC.minM+' minutes</small></div></div>':'<p class="empty">No eligible player has enough minutes and data to score this role. This is an evidence gap, not proof that the position is weak.</p>')+
+  '</section><section class="panel" style="padding:16px 18px"><div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;justify-content:space-between"><div><h2 style="margin:0">Market candidates</h2><p class="hint">Ranked by role performance score. Philosophy compatibility and incumbent score difference are shown separately.</p></div><div class="field"><label for="tc-q">Search candidates</label><input id="tc-q" type="search" value="'+esc(TC.q)+'" placeholder="Player, club or competition"></div></div>'+
+  '<p class="hint">'+market.length+' candidates with a usable role score across '+new Set(market.map(x=>x.p.club+'|'+x.p.div)).size+' club/competition groups. Showing '+visible.length+'. Missing values remain blank; no affordability claim is made.</p>'+
+  '<div class="tablewrap"><table><thead><tr><th>#</th><th>Player / club</th><th class="num">Role score</th><th>Philosophy</th><th class="num">Δ vs incumbent</th><th class="num">Age</th><th class="num">Minutes</th><th>Value</th><th>Wage</th><th>Contract</th></tr></thead><tbody>'+(candidateRows||'<tr><td colspan="10" class="empty">No candidates match this role and filter.</td></tr>')+'</tbody></table></div>'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px"><span class="hint">Full list available; increase the result limit to inspect more.</span><div class="field"><label for="tc-limit">Results shown</label><select id="tc-limit"><option value="50"'+(TC.limit===50?' selected':'')+'>50</option><option value="100"'+(TC.limit===100?' selected':'')+'>100</option><option value="250"'+(TC.limit===250?' selected':'')+'>250</option><option value="999999"'+(TC.limit===999999?' selected':'')+'>All</option></select></div></div></section>';
+  const club=$('tc-club'); if(club)club.onchange=()=>{S.save.myClub=club.value;persist().then(()=>renderTeamComparison());};
+  const role=$('tc-role');if(role)role.onchange=()=>{TC.role=role.value;renderTeamComparison();};
+  const mins=$('tc-mins');if(mins)mins.onchange=()=>{TC.minM=Math.max(0,num(mins.value)||0);renderTeamComparison();};
+  const q=$('tc-q');if(q)q.oninput=()=>{TC.q=q.value;renderTeamComparison();};
+  const limit=$('tc-limit');if(limit)limit.onchange=()=>{TC.limit=limit.value==='999999'?999999:Number(limit.value);renderTeamComparison();};
 }
 
 /* ---------------- Scoring ---------------- */
@@ -3770,9 +3814,9 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','bench','leagues','guide']);
+const ALL_TABS = new Set(['home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','teamcompare','bench','leagues','guide']);
 const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
-  squad:['My club','Squad stats'], tactic:['My club','Tactic & best XI'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
+  squad:['My club','Squad stats'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
 function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   const inf = TAB_INFO[t] || ['', t]; $('crumb').innerHTML = `<span class="grp-lbl">${esc(inf[0])}</span><span class="sep">/</span><b>${esc(inf[1])}</b>`;
@@ -3784,7 +3828,7 @@ function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').class
 function renderTab(){ renderAppsNote();
   if (S.tab === 'manifesto') renderManifesto(); else if (S.tab === 'blueprint') renderBlueprint(); else if (S.tab === 'journal') renderJournal(); else if (S.tab === 'squad') renderSquadStats(); else if (S.tab === 'shortlist') renderShortlist(); else if (S.tab === 'philo') renderPhilo();
   navCounts();
-  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
+  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.tagName === 'SECTION') return; e.preventDefault(); setTab(b.dataset.tab); });
 function navCounts(){ const c = $('cnt-compare'); if (c) c.textContent = cmpN() ? String(cmpN()) : ''; const sl = $('cnt-shortlist'); if (sl){ const n = S.save ? ((S.save.shortlist || []).length + (S.save.prospects || []).length) : 0; sl.textContent = n ? String(n) : ''; } }
 
