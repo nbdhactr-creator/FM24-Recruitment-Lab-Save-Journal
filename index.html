@@ -4690,9 +4690,9 @@ async function openPlayer(key){
   for (const se of otherSeasons){ const lc = all.filter(c => c.season === se).pop(); const st = await stdOf(lc, se); const p = st.byKey.get(key); if (p) cols.push({label:se, sub:'Full record', p}); }
   const any = cols.find(c => c.p) ; if (!any){ toast('No stats for that player in these checkpoints'); return; }
   const base = me || any.p; const pr = profOf(base); const b = BP_BY[pr]; const role = roleFor(base, pr);
-  $('pl-title').textContent = base.name; $('pl-sub').textContent = `${base.age != null ? base.age + ', ' : ''}${base.pos || ''}${base.hg && base.hg !== '-' ? ' · ' + base.hg : ''}`;
+  $('pl-title').textContent = base.name; $('pl-sub').textContent = `${base.age != null ? base.age + ', ' : ''}${base.pos || ''}${base.hg && base.hg !== '-' ? ' · ' + base.hg : ''}${base.uid ? ' · UID ' + base.uid : ' · No FM UID'} · ${base.identityType === 'fm-uid' ? 'UID-tracked' : base.identityType === 'name-club-fallback' ? 'Name + club fallback' : base.identityType === 'duplicate-fm-uid' ? 'Duplicate UID · isolated record' : 'Ambiguous fallback · isolated record'}`;
   const scope = SQ.scope, stv = role ? role.strata : null;
-  const head = `<tr><th>Stat</th>${cols.map(c => `<th class="num">${esc(c.label)}<div class="pclub" style="font-weight:400">${esc(c.sub || '')}</div></th>`).join('')}</tr>`;
+  const head = `<tr><th>Stat</th>${cols.map(c => `<th class="num">${esc(c.label)}<div class="pclub" style="font-weight:400">${esc(c.p ? [c.p.club,c.sub].filter(Boolean).join(' · ') : (c.sub || ''))}</div></th>`).join('')}</tr>`;
   const line = (lab, fn) => `<tr><td class="pname">${lab}</td>${cols.map(c => `<td class="num">${c.p ? fn(c.p) : '–'}</td>`).join('')}</tr>`;
   const bpRows = b ? b.rows.map(row => line(esc(row[0]), p => { if (!row[4]) return '<span class="tier t-na"><b>page</b></span>'; const v = bpVal(p, row[4]), ok = bpFloorOK(p, row[4]); let t = (v == null || !ok || p.mins < 270) ? 'na' : tierOf(row, v); const pc = ok && v != null ? sqPct(p, row[4], stv, scope) : null; return `<span class="tier t-${t}"><b>${v == null ? '–' : fmt(v, row[4])}</b><small>${pc == null || p.mins < 270 ? '' : 'pct ' + Math.round(pc)}</small></span>`; })).join('') : '';
   const extra = ['npxG/90', 'xA/90', 'npG-npxG/90', 'Pr passes/90', 'Poss Won/90', 'Pres C/90'].map(k => line(statLabel(k), p => fmt(p.s[k], k))).join('');
