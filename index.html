@@ -4502,16 +4502,30 @@ const POOLC = new Map();
 const TIER_LABEL = {elite:'Elite', good:'Good', floor:'Floor', below:'Below floor', na:''};
 function sortCks(a){ return (a || []).slice().sort((x, y) => ((sy(x.season) || 0) - (sy(y.season) || 0)) || String(x.date || '').localeCompare(String(y.date || '')) || ((x.created || 0) - (y.created || 0))); }
 async function ckData(ck){ if (CK.data.has(ck.id)) return CK.data.get(ck.id); if (!ck.ref) throw new Error('This checkpoint has no player stats.'); const obj = await Store.getSeason(ck.ref); CK.data.set(ck.id, obj); return obj; }
-function rowKeyFn(cols){ const iU = cols.indexOf('UID'), iN = cols.indexOf('Name'); return r => (iU >= 0 && r[iU]) ? 'u' + r[iU] : 'n:' + norm(r[iN]); }
+function rowKeys(cols, rows, scope){
+  const iU=cols.indexOf('UID'),iN=cols.indexOf('Name'),iC=cols.indexOf('Club');
+  const uidCounts=new Map(),fallbackCounts=new Map();
+  rows.forEach(r=>{
+    const uid=iU>=0?String(r[iU]||'').trim():'';
+    if(uid)uidCounts.set(uid,(uidCounts.get(uid)||0)+1);
+    else {const k=norm(r[iN])+'|'+norm(iC>=0?r[iC]:'');fallbackCounts.set(k,(fallbackCounts.get(k)||0)+1);}
+  });
+  return rows.map((r,i)=>{
+    const uid=iU>=0?String(r[iU]||'').trim():'';
+    if(uid)return uidCounts.get(uid)===1?'u:'+uid:'duplicate-uid:'+uid+':'+scope+':'+i;
+    const fallback=norm(r[iN])+'|'+norm(iC>=0?r[iC]:'');
+    return fallbackCounts.get(fallback)===1?'n:'+fallback:'ambiguous-fallback:'+fallback+':'+scope+':'+i;
+  });
+}
 const RATIO = {'Pas %':['Ps C','Pas A',100], 'Hdr %':['Hdrs','Hdrs A',100], 'Tck R':['Tck W','Tck A',100], 'Cr C/A':['Cr C','Cr A',100], 'Conv %':['Gls','Shots',100], 'Shot %':['ShT','Shots',100], 'OP-Cr %':['OP-Crs C','OP-Crs A',100], 'Pens Saved Ratio':['Pens Saved','Pens Faced',100], 'Pen/R':['Pens S','Pens',100], 'Mins/Gl':['Mins','Gls',1]};
 const PKEEP = new Set(['Age']), PNULL = new Set(['Sv %','xSv %','Dist/90']);
 /* The form of one block: this checkpoint minus the one before it */
 function periodObj(cur, prev){
   if (!prev) return cur;
-  const C = cur.cols, T = new Set(cur.text || []), kc = rowKeyFn(C), kp = rowKeyFn(prev.cols);
-  const pm = new Map(prev.rows.map(r => [kp(r), r])), pi = Object.fromEntries(prev.cols.map((c, i) => [c, i])), ci = Object.fromEntries(C.map((c, i) => [c, i]));
-  const rows = cur.rows.map(r => {
-    const p = pm.get(kc(r)); if (!p) return r.slice();
+  const C = cur.cols, T = new Set(cur.text || []), ck = rowKeys(C,cur.rows,'cur:'+(cur.importedAt||'snapshot')), pk = rowKeys(prev.cols,prev.rows,'prev:'+(prev.importedAt||'snapshot'));
+  const pm = new Map(prev.rows.map((r,i) => [pk[i], r])), pi = Object.fromEntries(prev.cols.map((c, i) => [c, i])), ci = Object.fromEntries(C.map((c, i) => [c, i]));
+  const rows = cur.rows.map((r,i) => {
+    const p = pm.get(ck[i]); if (!p) return r.slice();
     const pv = c => pi[c] != null ? p[pi[c]] : null;
     const m2 = num(r[ci['Mins']]) || 0, m1 = num(pv('Mins')) || 0, dm = m2 - m1;
     const a2 = ci['Apps'] != null ? (num(r[ci['Apps']]) || 0) : 0, a1 = num(pv('Apps')) || 0;
@@ -4529,7 +4543,7 @@ function periodObj(cur, prev){
   });
   return {v:1, cols:C, text:cur.text, rows};
 }
-function procSquad(obj, label){ const res = processSeason(obj, label); const kf = rowKeyFn(obj.cols); res.players.forEach(p => { p.key = kf(obj.rows[p.i]); }); res.byKey = new Map(res.players.map(p => [p.key, p])); return res; }
+function procSquad(obj, label){ const res = processSeason(obj, label); const keys=rowKeys(obj.cols,obj.rows,'season:'+(obj.importedAt||label||'snapshot')); res.players.forEach(p => { p.key=keys[p.i]; }); res.byKey = new Map(res.players.map(p => [p.key, p])); return res; }
 function procCached(k, fn){ if (!CK.proc.has(k)) CK.proc.set(k, fn()); return CK.proc.get(k); }
 async function blockOf(cks, i, label){ const ck = cks[i]; const o = await ckData(ck); let j = i - 1; while (j >= 0 && !cks[j].ref) j--; const pr = j >= 0 ? await ckData(cks[j]) : null; return procCached(ck.id + '|blk', () => procSquad(pr ? periodObj(o, pr) : o, label)); }
 async function stdOf(ck, label){ const o = await ckData(ck); return procCached(ck.id + '|std', () => procSquad(o, label)); }
