@@ -3827,6 +3827,7 @@ document.addEventListener('change', async e => {
   const input = e.target.closest('[data-league-factor]');
   if (!input || !S.save) return;
   const key = input.dataset.leagueFactor, raw = input.value.trim();
+  S.save.leagueFactors = S.save.leagueFactors && typeof S.save.leagueFactors === 'object' ? S.save.leagueFactors : {};
   if (!raw) delete S.save.leagueFactors[key];
   else {
     const value = Number(raw);
