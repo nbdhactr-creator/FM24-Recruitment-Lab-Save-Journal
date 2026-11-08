@@ -1823,8 +1823,9 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- BENCHMARKS -->
   <section class="view" id="v-bench" hidden>
-    <div class="pagehead"><div><h1>Benchmarks</h1><p>What regular starters in each role produce, league by league.</p></div></div>
+    <div class="pagehead"><div><h1>League benchmarks</h1><p>See what established players look like in each competition, role by role.</p></div></div>
     <div class="panel">
+      <div class="grp" style="margin-bottom:14px"><h2 style="margin:0 0 6px;font-size:18px">What this page answers</h2><p class="hint" style="margin:0">Choose a role and compare its regular starters across leagues. The score is a role-fit measure built from the player’s most relevant attributes and statistics. It helps you compare the standard of players available in each competition; it is not a league strength rating.</p></div>
       <div class="grp"><div class="grid g4">
         <div class="field"><label for="brole">Role</label><select id="brole"></select></div>
         <div class="field"><label for="bmins">Regular starter: min minutes</label><input id="bmins" type="number" min="0" step="100" value="1500" inputmode="numeric"></div>
@@ -1832,7 +1833,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <div class="field"><label for="bsort">Sort by</label><select id="bsort"><option value="med">Median role score</option><option value="rep">League reputation</option><option value="n">Number of starters</option></select></div>
       </div></div>
       <div class="grp"><div class="tablewrap"><table><thead id="bmhead"></thead><tbody id="bmbody"></tbody></table></div>
-      <p class="hint" style="margin-top:10px">Role scores are percentiles against every player in the position across all leagues, so a score of 60 means the same thing in every row. Stats shown are medians of the league's regular starters. Because scores rank against every league at once, weaker leagues score higher than they would against tougher opposition; switch on the adjusted view in Explore to correct for that.</p></div>
+      <div class="grp" style="margin-top:14px"><h3 style="margin:0 0 8px">How to read the results</h3><div class="grid g3"><div><b>Typical role score</b><p class="hint">The median score among eligible regular starters in that league. Scores are built from weighted percentiles for the selected role, against the full eligible player pool in that position group. Higher is better.</p></div><div><b>Top-quarter score</b><p class="hint">The 75th percentile. Roughly one quarter of that league’s eligible starters score at or above this level.</p></div><div><b>Key role stats</b><p class="hint">The median values for the three statistics that carry the most weight in this role. They add context to the score; they are not separate ratings.</p></div></div><p class="hint" style="margin:8px 0 0">Regular starters are players who meet your minutes threshold. The league filter only changes which leagues are displayed; it does not recalculate scores against a smaller pool. Turn on adjusted view in Explore if you want eligible attacking volume statistics and role scores to account for league strength.</p></div></div>
     </div>
   </section>
 
@@ -3790,18 +3791,26 @@ function renderTactic(){
 function renderBench(){
   if (!S.season || S.tab !== 'bench') return;
   const role = roleById[$('brole').value], minM = num($('bmins').value) || 0, ks = topStats(role, 3), my = S.save.myLeague;
-  const by = {}; S.season.players.forEach(p => { if (p.mins >= minM && inStrata(p, role.strata)){ const sc = roleScore(p, role); if (sc != null) (by[p.div] = by[p.div] || []).push({p, sc}); } });
-  let myBest = null; if (S.save.myClub){ const sq = S.season.players.filter(p => p.club === S.save.myClub && inStrata(p, role.strata) && p.mins >= Math.min(minM, 450)).map(p => ({p, sc:roleScore(p, role)})).filter(d => d.sc != null).sort((a,b) => b.sc - a.sc); myBest = sq[0] || null; }
-  let rows = Object.keys(by).map(d => { const a = by[d]; const sc = a.map(x => x.sc); const top = a.slice().sort((x,y) => y.sc - x.sc)[0];
-    return {d, n:a.length, med:median(sc), p75:quant(sc,.75), top, st: ks.map(k => median(a.map(x => statVal(x.p, k)))), rep:REP.get(norm(d))}; });
+  const by = {};
+  S.season.players.forEach(p => { if (p.mins >= minM && inStrata(p, role.strata)){ const sc = roleScore(p, role); if (sc != null) (by[p.div] = by[p.div] || []).push({p, sc}); } });
+  let myBest = null;
+  if (S.save.myClub){ const sq = S.season.players.filter(p => p.club === S.save.myClub && inStrata(p, role.strata) && p.mins >= Math.min(minM, 450)).map(p => ({p, sc:roleScore(p, role)})).filter(d => d.sc != null).sort((a,b) => b.sc-a.sc); myBest = sq[0] || null; }
+  let rows = Object.keys(by).map(d => { const a=by[d], sc=a.map(x=>x.sc), top=a.slice().sort((x,y)=>y.sc-x.sc)[0]; return {d,n:a.length,med:median(sc),p75:quant(sc,.75),top,st:ks.map(k=>median(a.map(x=>statVal(x.p,k)))),rep:REP.get(norm(d))}; });
   const scope = $('bscope') ? $('bscope').value : 'all';
-  if (scope === 'top5') rows = rows.filter(r => r.rep && r.rep.region === 'Europe' && r.rep.rank <= 5);
-  else if (scope === 'top10') rows = rows.filter(r => r.rep && r.rep.region === 'Europe' && r.rep.rank <= 10);
-  else if (scope === 'my') rows = rows.filter(r => r.d === my);
-  const s = $('bsort').value; rows.sort((a,b) => s === 'rep' ? (((b.rep||{stars:0}).stars - (a.rep||{stars:0}).stars) || (b.med - a.med)) : s === 'n' ? b.n - a.n : b.med - a.med);
-  $('bmhead').innerHTML = `<tr><th>League</th><th>Reputation</th><th class="num">Starters</th><th>Median score</th><th class="num">75th pct</th>${myBest?`<th class="num">${esc(surname(myBest.p.name))} vs median</th>`:''}${ks.map(k => `<th class="num">${esc(k)}</th>`).join('')}<th>Best in league</th></tr>`;
-  $('bmbody').innerHTML = (myBest ? `<tr class="minerow"><td colspan="${7 + ks.length}"><span class="mc-tag">MY CLUB</span> <b>Your best ${esc(role.name.toLowerCase())}:</b> ${esc(myBest.p.name)}, score ${myBest.sc}. The column above shows how far he sits from each league's typical starter.</td></tr>` : '') +
-    rows.map(r => `<tr${r.d===my?' style="background:rgba(255,255,255,.04)"':''}><td><span class="pname">${esc(r.d)}</span>${r.d===my?'<div class="pclub">Your league</div>':''}</td><td>${r.rep?starsTxt(r.rep.stars):'–'}<div class="pclub">${r.rep?esc(r.rep.region)+', '+ordinal(r.rep.rank):''}</div></td><td class="num">${r.n}</td><td>${scoreHtml(Math.round(r.med))}</td><td class="num">${Math.round(r.p75)}</td>${myBest?`<td class="num ${myBest.sc - r.med >= 0 ? 'delta-pos' : 'delta-neg'}">${(myBest.sc - r.med >= 0 ? '+' : '') + Math.round(myBest.sc - r.med)}</td>`:''}${r.st.map((v,j) => `<td class="num">${fmt(v, ks[j])}</td>`).join('')}<td>${esc(r.top.p.name)} <span class="pclub">${r.top.sc}</span></td></tr>`).join('');
+  if (scope === 'top5') rows=rows.filter(r=>r.rep&&r.rep.region==='Europe'&&r.rep.rank<=5);
+  else if (scope === 'top10') rows=rows.filter(r=>r.rep&&r.rep.region==='Europe'&&r.rep.rank<=10);
+  else if (scope === 'my') rows=rows.filter(r=>r.d===my);
+  const sort=$('bsort').value;
+  rows.sort((a,b)=>sort==='rep'?(((b.rep||{stars:0}).stars-(a.rep||{stars:0}).stars)||(b.med-a.med)):sort==='n'?b.n-a.n:b.med-a.med);
+  const best=rows.slice().sort((a,b)=>b.med-a.med)[0], mine=rows.find(r=>r.d===my), total=rows.reduce((n,r)=>n+r.n,0);
+  $('bmhead').innerHTML='<tr><th>League</th><th>FM reputation</th><th class="num">Regular starters</th><th>Typical role score</th><th class="num">Top-quarter score</th>'+(myBest?'<th class="num">Your best player vs typical</th>':'')+ks.map(k=>'<th class="num">'+esc(k)+'</th>').join('')+'<th>League standout</th></tr>';
+  let insight='<div class="grp" style="background:var(--panel2,rgba(255,255,255,.025));border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px"><div class="grid g3">'+
+    '<div><div class="pclub">ROLE BEING COMPARED</div><b>'+esc(role.name)+' · '+esc(role.dutyName)+'</b><div class="hint">'+esc(STRATA[role.strata].label)+'</div></div>'+
+    '<div><div class="pclub">LEAGUES SHOWN</div><b>'+rows.length+'</b><div class="hint">'+total.toLocaleString()+' eligible regular starters in total</div></div>'+
+    '<div><div class="pclub">HIGHEST TYPICAL SCORE</div><b>'+(best?esc(best.d):'No matching league data')+'</b><div class="hint">'+(best?'Median role score: '+Math.round(best.med)+'/100':'Try All leagues or lower the minutes threshold')+'</div></div></div>' +
+    (mine?'<p class="hint" style="margin:12px 0 0"><b>Your league:</b> '+esc(mine.d)+' has '+mine.n+' eligible regular starters and a typical score of '+Math.round(mine.med)+'/100.'+(myBest?' Your best player, '+esc(myBest.p.name)+', scores '+myBest.sc+'/100 ('+(myBest.sc-mine.med>=0?'+':'')+Math.round(myBest.sc-mine.med)+' vs the league typical).':'')+'</p>':'')+'</div>';
+  const rowsHtml=rows.map(r=>{ const delta=myBest?myBest.sc-r.med:null; return '<tr'+(r.d===my?' style="background:rgba(255,255,255,.04)"':'')+'><td><span class="pname">'+esc(r.d)+'</span>'+(r.d===my?'<div class="pclub">Your league</div>':'')+'</td><td>'+(r.rep?starsTxt(r.rep.stars):'–')+'<div class="pclub">'+(r.rep?esc(r.rep.region)+', rank '+ordinal(r.rep.rank):'No reputation data')+'</div></td><td class="num">'+r.n+'</td><td>'+scoreHtml(Math.round(r.med))+'</td><td class="num">'+Math.round(r.p75)+'</td>'+(myBest?'<td class="num '+(delta>=0?'delta-pos':'delta-neg')+'">'+(delta>=0?'+':'')+Math.round(delta)+' points</td>':'')+r.st.map((v,j)=>'<td class="num">'+fmt(v,ks[j])+'</td>').join('')+'<td><span class="pname">'+esc(r.top.p.name)+'</span><div class="pclub">Role score '+r.top.sc+'/100</div></td></tr>'; }).join('');
+  $('bmbody').innerHTML=insight+(rowsHtml||'<tr><td colspan="12" class="pclub">No leagues match these settings. Try All leagues or reduce the minutes threshold.</td></tr>');
 }
 ['brole','bscope','bsort'].forEach(id => $(id).addEventListener('change', renderBench)); $('bmins').addEventListener('input', renderBench);
 
