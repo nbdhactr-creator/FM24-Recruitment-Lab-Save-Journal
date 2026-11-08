@@ -2738,15 +2738,17 @@ function renderTeamIntelligence(){
   const all=teamRows(), leagues=[...new Set(all.map(t=>t.div).filter(Boolean))].sort();
   const list=all.filter(t=>(!TI.league||t.div===TI.league)&&(!TI.q||norm(t.club).includes(norm(TI.q))||norm(t.div).includes(norm(TI.q))));
   let me=all.find(t=>norm(t.club)===norm(S.save.myClub));
-  const saveMatch=all.filter(t=>norm(t.club)===norm(S.save.name));
-  if(!me && saveMatch.length===1) me=saveMatch[0];
+  const saveNameMatches=all.filter(t=>norm(t.club)===norm(S.save.name));
+  const recognitionCandidates=!S.save.myClub?saveNameMatches:[];
+  if(!me && recognitionCandidates.length===1) me=recognitionCandidates[0];
+  if(!me && S.save.myLeague){const leagueMatches=recognitionCandidates.filter(t=>norm(t.div)===norm(S.save.myLeague));if(leagueMatches.length===1)me=leagueMatches[0];}
   if(!TI.selected || !list.some(t=>norm(t.club)+'|'+norm(t.div)===TI.selected)) TI.selected=(me&&list.includes(me)?norm(me.club)+'|'+norm(me.div):(list[0]?norm(list[0].club)+'|'+norm(list[0].div):''))||'';
   const chosen=list.find(t=>norm(t.club)+'|'+norm(t.div)===TI.selected);
   const metric=(v,fn)=>v==null?'—':fn(v);
   const rosterOptions=[['position-asc','Position A–Z'],['name-asc','Name A–Z'],['age-asc','Age: young to old'],['age-desc','Age: old to young'],['mins-desc','Minutes: high to low'],['mins-asc','Minutes: low to high'],['rating-desc','Average rating: high to low'],['rating-asc','Average rating: low to high'],['value-desc','Value: high to low'],['value-asc','Value: low to high'],['wage-desc','Wage: high to low'],['wage-asc','Wage: low to high']];
   const roster=chosen?tiRosterSorted(chosen.players):[];
   root.innerHTML=`<div class="rl-ph"><div><h1 class="cf-h1">Team intelligence</h1><p class="cf-sub">Squad profiles derived from the imported ${esc(S.season.label)} player export. Missing data is not treated as zero.</p></div></div>
-  ${!S.save.myClub&&saveMatch.length===1?`<div class="panel" style="padding:14px 18px;margin-bottom:12px">Possible My Club match from save name: <b>${esc(saveMatch[0].club)}</b>. <button class="btn sm" type="button" data-ti-set="${esc(saveMatch[0].club)}">Confirm as My Club</button></div>`:''}
+  ${!S.save.myClub&&recognitionCandidates.length?`<div class="panel" style="padding:14px 18px;margin-bottom:12px"><b>Confirm your My Club</b><p class="hint" style="margin:5px 0 10px">The save name exactly matches ${recognitionCandidates.length} imported club/competition group${recognitionCandidates.length===1?'':'s'}. Choose the correct competition; the Lab will not guess.</p><div style="display:flex;gap:8px;flex-wrap:wrap">${recognitionCandidates.map(t=>`<button class="btn sm" type="button" data-ti-set-club="${esc(t.club)}" data-ti-set-league="${esc(t.div||'')}">${esc(t.club)} — ${esc(t.div||'Competition not supplied')}</button>`).join('')}</div></div>`:''}
   <section class="panel" style="padding:14px 18px;margin-bottom:12px"><div class="grid g2"><div class="field"><label for="ti-q">Search clubs or competitions</label><input id="ti-q" type="search" value="${esc(TI.q)}" placeholder="Search teams…"></div><div class="field"><label for="ti-league">Competition</label><select id="ti-league"><option value="">All competitions</option>${leagues.map(l=>`<option value="${esc(l)}"${l===TI.league?' selected':''}>${esc(l)}</option>`).join('')}</select></div></div><p class="hint" style="margin:8px 0 0">${list.length} of ${all.length} club/competition squads · ${all.reduce((n,t)=>n+t.n,0).toLocaleString()} imported player rows</p></section>
   <div class="ti-layout">
   <section class="panel ti-team-panel"><div class="ti-team-head"><span>Club / competition</span><span>Players</span><span>Avg age</span><span>Avg rat.</span><span>Coverage</span></div>
@@ -2761,7 +2763,7 @@ function renderTeamIntelligence(){
   lg.onchange=()=>{TI.league=lg.value;renderTeamIntelligence();};
   if(rs) rs.onchange=()=>{TI.rosterSort=rs.value;renderTeamIntelligence();};
   root.querySelectorAll('[data-ti-key]').forEach(b=>b.onclick=()=>{TI.selected=b.dataset.tiKey;renderTeamIntelligence();});
-  root.querySelectorAll('[data-ti-set]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSet;await persist();renderTeamIntelligence();toast('My Club confirmed');});
+  root.querySelectorAll('[data-ti-set-club]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSetClub;S.save.myLeague=b.dataset.tiSetLeague||'';TI.selected=norm(S.save.myClub)+'|'+norm(S.save.myLeague);TC.focus=tcClubKey(S.save.myClub,S.save.myLeague);await persist();renderTeamIntelligence();toast('My Club and competition confirmed');});
 }
 
 /* ---------------- My Club: squad vs market ---------------- */
@@ -2780,7 +2782,7 @@ async function renderTeamComparison(){
   const selectedRole=roleById[TC.role]||roleById[tac.roles[codes[0]]];
   const slots=codes.map(c=>({code:c,role:roleById[tac.roles[c]]})).filter(x=>x.role);
   const options=slots.map(x=>'<option value="'+esc(x.role.id)+'"'+(x.role.id===TC.role?' selected':'')+'>'+esc(SLOT_LABEL[x.code]+' — '+roleTitle(x.role))+'</option>').join('');
-  if(!TC.focus){const mine=teams.filter(t=>norm(t.club)===norm(S.save.myClub));const preferred=mine.find(t=>norm(t.div)===norm(S.save.myLeague))||mine[0];TC.focus=preferred?tcClubKey(preferred.club,preferred.div):(teams[0]?tcClubKey(teams[0].club,teams[0].div):'');}
+  if(!TC.focus){const mine=teams.filter(t=>norm(t.club)===norm(S.save.myClub));const exactLeague=mine.filter(t=>norm(t.div)===norm(S.save.myLeague));const preferred=exactLeague.length===1?exactLeague[0]:(mine.length===1?mine[0]:null);TC.focus=preferred?tcClubKey(preferred.club,preferred.div):'';}
   const focus=teams.find(t=>tcClubKey(t.club,t.div)===TC.focus)||null;
   const selectedClub=focus?focus.club:'';
   const selectedDiv=focus?focus.div:'';
@@ -2812,7 +2814,7 @@ async function renderTeamComparison(){
     const retrain=listedFor(x.p,selectedRole)?'':' · Position conversion';
     return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(x.p.name||'Unknown player')+'</b><small class="rl-sub" style="display:block">'+esc(tcPlayerMeta(x.p))+esc(retrain)+'</small></td><td class="num">'+x.score+'</td><td>'+band(x.ph)+'</td><td class="num">'+d+'</td><td class="num">'+(x.p.age??'—')+'</td><td class="num">'+(x.p.mins==null?'—':Math.round(x.p.mins).toLocaleString())+'</td><td>'+tcMoney(x.p.val)+'</td><td>'+tcMoney(x.p.wage)+'</td><td>'+(x.p.expires||'—')+'</td></tr>';
   }).join('');
-  root.innerHTML='<section class="panel" style="padding:16px 18px;margin-bottom:12px"><div class="grid g4"><div class="field"><label>Focus club / competition</label><select id="tc-club">'+teams.map(t=>'<option value="'+esc(tcClubKey(t.club,t.div))+'"'+(focus&&tcClubKey(t.club,t.div)===TC.focus?' selected':'')+'>'+esc(t.club+' — '+(t.div||'Unknown competition'))+'</option>').join('')+'</select></div><div class="field"><label>Active tactic</label><div style="padding:10px 0"><b>'+esc(tac.name||'Current tactic')+'</b><small class="rl-sub" style="display:block">'+esc(tac.formation)+'</small></div></div><div class="field"><label for="tc-role">Tactical role</label><select id="tc-role">'+options+'</select></div><div class="field"><label for="tc-mins">Minimum minutes</label><input id="tc-mins" type="number" min="0" step="50" value="'+TC.minM+'"></div></div><p class="hint" style="margin:8px 0 0">The selected club is evaluated against the active save tactic and your configured Philosophy Score. Other clubs’ own tactics are not inferred from player exports.</p></section>'+
+  root.innerHTML='<section class="panel" style="padding:16px 18px;margin-bottom:12px"><div class="grid g4"><div class="field"><label>Focus club / competition</label><select id="tc-club"><option value="">Choose a club / competition</option>'+teams.map(t=>'<option value="'+esc(tcClubKey(t.club,t.div))+'"'+(focus&&tcClubKey(t.club,t.div)===TC.focus?' selected':'')+'>'+esc(t.club+' — '+(t.div||'Unknown competition'))+'</option>').join('')+'</select></div><div class="field"><label>Active tactic</label><div style="padding:10px 0"><b>'+esc(tac.name||'Current tactic')+'</b><small class="rl-sub" style="display:block">'+esc(tac.formation)+'</small></div></div><div class="field"><label for="tc-role">Tactical role</label><select id="tc-role">'+options+'</select></div><div class="field"><label for="tc-mins">Minimum minutes</label><input id="tc-mins" type="number" min="0" step="50" value="'+TC.minM+'"></div></div><p class="hint" style="margin:8px 0 0">The selected club is evaluated against the active save tactic and your configured Philosophy Score. Other clubs’ own tactics are not inferred from player exports.</p></section>'+
   (!selectedClub?'<section class="panel"><p class="empty">Set My Club in your save settings, or select a focus club above.</p></section>':'')+depthMarkup+
   '<section class="panel" style="padding:16px 18px;margin-bottom:12px"><h2 style="margin-top:0">Role assessment</h2><p class="hint">'+esc(selectedRole?roleTitle(selectedRole):'Choose a role')+' · '+players.length+' imported squad rows for '+esc(selectedClub?(selectedClub+' — '+(selectedDiv||'Competition not supplied')):'No club selected')+'</p>'+
   (incumbent?'<div class="grid g4"><div><small class="rl-sub">Best eligible player</small><h3>'+esc(incumbent.p.name)+'</h3><small>'+esc(tcPlayerMeta(incumbent.p))+'</small></div><div><small class="rl-sub">Role score</small><h2>'+incumbent.score+'/100</h2></div><div><small class="rl-sub">Philosophy compatibility</small><h3>'+ (incumbent.ph==null?'Insufficient data':incumbent.ph+'/100')+'</h3>'+band(incumbent.ph)+'</div><div><small class="rl-sub">Role coverage</small><h3>'+scored.length+' eligible players</h3><small>At least '+TC.minM+' minutes</small></div></div>':'<p class="empty">No eligible player has enough minutes and data to score this role. This is an evidence gap, not proof that the position is weak.</p>')+
@@ -2823,7 +2825,7 @@ async function renderTeamComparison(){
   const club=$('tc-club'); if(club)club.onchange=()=>{TC.focus=club.value;renderTeamComparison();};
   const role=$('tc-role');if(role)role.onchange=()=>{TC.role=role.value;renderTeamComparison();};
   const mins=$('tc-mins');if(mins)mins.onchange=()=>{TC.minM=Math.max(0,num(mins.value)||0);renderTeamComparison();};
-  const q=$('tc-q');if(q)q.oninput=()=>{TC.q=q.value;renderTeamComparison();};
+  const q=$('tc-q');if(q)q.oninput=()=>{const value=q.value,start=q.selectionStart,end=q.selectionEnd;TC.q=value;renderTeamComparison().then(()=>{const next=$('tc-q');if(next){next.focus();try{next.setSelectionRange(start,end);}catch(e){}}});};
   const limit=$('tc-limit');if(limit)limit.onchange=()=>{TC.limit=limit.value==='999999'?999999:Number(limit.value);renderTeamComparison();};
 }
 
