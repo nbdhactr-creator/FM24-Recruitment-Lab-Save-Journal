@@ -1515,6 +1515,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="bench" title="Benchmarks"><svg viewBox="0 0 20 20"><path d="M4 16V4h9l-1.5 3L13 10H4"/></svg><span class="lbl">Benchmarks</span></button>
   <div class="ng">My club</div>
   <button class="ni" type="button" data-tab="tactic" title="Tactic &amp; best XI"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h3M14 10h3"/><circle cx="10" cy="10" r="2.2"/></svg><span class="lbl">Tactic &amp; best XI</span></button>
+  <button class="ni" type="button" data-tab="teams" title="Team intelligence"><svg viewBox="0 0 20 20"><path d="M2.5 17V8l4-3 3.5 3v9M10 17V5l3-2 4.5 3v11M5 17v-3h3v3M13 9h2M13 12h2"/></svg><span class="lbl">Team intelligence</span></button>
   <button class="ni" type="button" data-tab="clubs" title="Club finder"><svg viewBox="0 0 20 20"><path d="M10 2.5 16.5 5v5c0 4-2.8 6.6-6.5 8-3.7-1.4-6.5-4-6.5-8V5z"/><path d="M7.2 10.2 9.2 12l3.8-4"/></svg><span class="lbl">Club finder</span></button>
   <button class="ni" type="button" data-tab="philo" title="Philosophy score"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3.5"/><circle cx="10" cy="10" r=".7"/></svg><span class="lbl">Philosophy score</span></button>
   <div class="side-foot">
@@ -1557,6 +1558,8 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- HOME -->
   <section class="view fitpg" id="v-home" hidden><div class="fitroot" id="home-root"></div></section>
+  <!-- TEAM INTELLIGENCE -->
+  <section class="view fitpg" id="v-teams" hidden><div class="fitroot" id="teams-root"></div></section>
   <!-- CLUB FINDER -->
   <section class="view fitpg" id="v-clubs" hidden><div class="fitroot" id="clubs-root"></div></section>
   <!-- DOF PICKS -->
@@ -2642,6 +2645,51 @@ function processSeason(obj, label, opts){
   return {label, end, players, usable, leagues:[...new Set(players.map(p => p.div).filter(Boolean))], limited:gaps, identityDiagnostics, appsOld: obj.apps !== 2 && C.includes('Apps')};
 }
 
+/* ---------------- Team intelligence ---------------- */
+let TI = {q:'', league:'', selected:''};
+function teamRows(){
+  if (!S.season) return [];
+  const by = new Map();
+  S.season.players.forEach(p => {
+    const club = String(p.club || '').trim(), div = String(p.div || '').trim();
+    if (!club) return;
+    const key = norm(club) + '|' + norm(div);
+    if (!by.has(key)) by.set(key, {club, div, players:[]});
+    by.get(key).players.push(p);
+  });
+  return [...by.values()].map(t => {
+    const ages=t.players.map(p=>p.age).filter(Number.isFinite), ratings=t.players.map(p=>p.s['Av Rat']).filter(Number.isFinite);
+    const mins=t.players.map(p=>p.mins).filter(Number.isFinite), vals=t.players.map(p=>p.val).filter(Number.isFinite), wages=t.players.map(p=>p.wage).filter(Number.isFinite);
+    const pos=new Set(t.players.flatMap(p=>[...p.slots]));
+    const coverage=t.players.length>=15?'High':t.players.length>=8?'Moderate':'Insufficient';
+    return {...t,n:t.players.length,avgAge:ages.length?ages.reduce((a,b)=>a+b,0)/ages.length:null,avgRating:ratings.length?ratings.reduce((a,b)=>a+b,0)/ratings.length:null,totalMins:mins.length?mins.reduce((a,b)=>a+b,0):null,value:vals.length===t.players.length?vals.reduce((a,b)=>a+b,0):null,wage:wages.length===t.players.length?wages.reduce((a,b)=>a+b,0):null,knownValues:vals.length,knownWages:wages.length,posCount:pos.size,coverage};
+  }).sort((a,b)=>b.n-a.n || a.club.localeCompare(b.club));
+}
+function renderTeamIntelligence(){
+  const root=$('teams-root'); if(!root || S.tab!=='teams') return;
+  const all=teamRows(), leagues=[...new Set(all.map(t=>t.div).filter(Boolean))].sort();
+  const list=all.filter(t=>(!TI.league||t.div===TI.league)&&(!TI.q||norm(t.club).includes(norm(TI.q))||norm(t.div).includes(norm(TI.q))));
+  let me=all.find(t=>norm(t.club)===norm(S.save.myClub));
+  const saveMatch=all.filter(t=>norm(t.club)===norm(S.save.name));
+  if(!me && saveMatch.length===1) me=saveMatch[0];
+  if(!TI.selected || !list.some(t=>t.club===TI.selected)) TI.selected=(me&&list.includes(me)?me.club:(list[0]&&list[0].club))||'';
+  const chosen=list.find(t=>t.club===TI.selected);
+  const metric=(v,fn)=>v==null?'—':fn(v);
+  root.innerHTML=`<div class="rl-ph"><div><h1 class="cf-h1">Team intelligence</h1><p class="cf-sub">Squad profiles derived from the imported ${esc(S.season.label)} player export. Missing data is not treated as zero.</p></div></div>
+  ${!S.save.myClub&&saveMatch.length===1?`<div class="panel" style="padding:14px 18px;margin-bottom:12px">Possible My Club match from save name: <b>${esc(saveMatch[0].club)}</b>. <button class="btn sm" type="button" data-ti-set="${esc(saveMatch[0].club)}">Confirm as My Club</button></div>`:''}
+  <section class="panel" style="padding:14px 18px;margin-bottom:12px"><div class="grid g2"><div class="field"><label for="ti-q">Search clubs or competitions</label><input id="ti-q" type="search" value="${esc(TI.q)}" placeholder="Search teams…"></div><div class="field"><label for="ti-league">Competition</label><select id="ti-league"><option value="">All competitions</option>${leagues.map(l=>`<option value="${esc(l)}"${l===TI.league?' selected':''}>${esc(l)}</option>`).join('')}</select></div></div><p class="hint" style="margin:8px 0 0">${list.length} of ${all.length} club/competition squads · ${all.reduce((n,t)=>n+t.n,0).toLocaleString()} imported player rows</p></section>
+  <div class="cf-grid" style="grid-template-columns:minmax(0,1fr) minmax(360px,520px)">
+  <section class="panel" style="min-height:400px;overflow:auto"><div class="rl-table-head" style="position:sticky;top:0"><span>Club / competition</span><span>Players</span><span>Avg age</span><span>Avg rat.</span><span>Coverage</span></div>
+  ${list.map(t=>`<button type="button" class="rl-row" data-ti-club="${esc(t.club)}" style="width:100%;display:grid;grid-template-columns:minmax(0,1fr) 55px 65px 65px 90px;gap:8px;text-align:left;padding:11px 14px;background:${t.club===TI.selected?'rgba(255,255,255,.06)':'transparent'}"><span style="min-width:0"><b class="rl-ell">${esc(t.club)}</b><small class="rl-sub rl-ell">${esc(t.div||'Competition not supplied')}${t.club===S.save.myClub?' · MY CLUB':''}</small></span><b>${t.n}</b><span>${metric(t.avgAge,v=>v.toFixed(1))}</span><span>${metric(t.avgRating,v=>v.toFixed(2))}</span><span>${t.coverage}</span></button>`).join('')||'<p class="empty">No clubs match these filters.</p>'}</section>
+  <section class="panel" style="padding:18px;align-self:start">${chosen?`<h2 style="margin:0 0 4px">${esc(chosen.club)}</h2><p class="hint" style="margin:0 0 14px">${esc(chosen.div||'Competition not supplied')} · ${chosen.coverage} data coverage</p>
+  <div class="grid g2"><div><small class="rl-sub">Squad rows</small><h2>${chosen.n}</h2></div><div><small class="rl-sub">Average age</small><h2>${metric(chosen.avgAge,v=>v.toFixed(1))}</h2></div><div><small class="rl-sub">Average rating</small><h2>${metric(chosen.avgRating,v=>v.toFixed(2))}</h2></div><div><small class="rl-sub">Total minutes</small><h2>${metric(chosen.totalMins,v=>Math.round(v).toLocaleString())}</h2></div><div><small class="rl-sub">Squad value</small><h2>${chosen.value==null?'—':money(chosen.value)}</h2><small class="rl-sub">${chosen.knownValues}/${chosen.n} values known</small></div><div><small class="rl-sub">Weekly wage bill</small><h2>${chosen.wage==null?'—':money(chosen.wage)}</h2><small class="rl-sub">${chosen.knownWages}/${chosen.n} wages known</small></div><div><small class="rl-sub">Position slots covered</small><h2>${chosen.posCount}</h2></div><div><small class="rl-sub">Coverage tier</small><h2>${chosen.coverage}</h2></div></div>
+  <h3 style="margin:18px 0 8px">Squad roster</h3><div style="max-height:360px;overflow:auto">${chosen.players.slice().sort((a,b)=>(a.pos||'').localeCompare(b.pos||'')||(a.name||'').localeCompare(b.name||'')).map(p=>`<div class="rl-row" style="display:grid;grid-template-columns:minmax(0,1fr) 62px 55px;gap:8px;padding:7px 0"><span><b>${esc(p.name)}</b><small class="rl-sub">${esc(p.pos||'Position unknown')} · ${esc(p.age??'—')}</small></span><span>${p.mins==null?'—':Math.round(p.mins).toLocaleString()+'m'}</span><span>${p.s['Av Rat']==null?'—':p.s['Av Rat'].toFixed(2)}</span></div>`).join('')}</div>`: '<p class="empty">Select a club to inspect its squad.</p>'}</section></div>
+  <p class="hint" style="margin-top:10px">Coverage: High = 15+ imported player rows; Moderate = 8–14; Insufficient = fewer than 8. Values and wages are shown only when every row in that club group has a parsed value. These are export-based squad snapshots, not official club accounts or league standings.</p>`;
+  const q=$('ti-q'), lg=$('ti-league'); q.oninput=()=>{TI.q=q.value;renderTeamIntelligence();}; lg.onchange=()=>{TI.league=lg.value;renderTeamIntelligence();};
+  root.querySelectorAll('[data-ti-club]').forEach(b=>b.onclick=()=>{TI.selected=b.dataset.tiClub;renderTeamIntelligence();});
+  root.querySelectorAll('[data-ti-set]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSet;await persist();renderTeamIntelligence();toast('My Club confirmed');});
+}
+
 /* ---------------- Scoring ---------------- */
 const DEF_SKIP = new Set(['DM','MC','MLR','AMC','AMLR','ST']);
 let NODEF = false; try { NODEF = localStorage.getItem('rlabp-nodef') === '1'; } catch(e){}
@@ -3640,10 +3688,10 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['home','dof','philo','clubs','explore','scatter','compare','shortlist','tactic','bench','leagues','guide']);
-const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
+const ALL_TABS = new Set(['home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','bench','leagues','guide']);
+const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
   squad:['My club','Squad stats'], tactic:['My club','Tactic & best XI'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
-function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
+function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   const inf = TAB_INFO[t] || ['', t]; $('crumb').innerHTML = `<span class="grp-lbl">${esc(inf[0])}</span><span class="sep">/</span><b>${esc(inf[1])}</b>`;
   const ok = FREE_TABS.has(t) || !!S.season;
@@ -3654,7 +3702,7 @@ function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').class
 function renderTab(){ renderAppsNote();
   if (S.tab === 'manifesto') renderManifesto(); else if (S.tab === 'blueprint') renderBlueprint(); else if (S.tab === 'journal') renderJournal(); else if (S.tab === 'squad') renderSquadStats(); else if (S.tab === 'shortlist') renderShortlist(); else if (S.tab === 'philo') renderPhilo();
   navCounts();
-  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
+  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.tagName === 'SECTION') return; e.preventDefault(); setTab(b.dataset.tab); });
 function navCounts(){ const c = $('cnt-compare'); if (c) c.textContent = cmpN() ? String(cmpN()) : ''; const sl = $('cnt-shortlist'); if (sl){ const n = S.save ? ((S.save.shortlist || []).length + (S.save.prospects || []).length) : 0; sl.textContent = n ? String(n) : ''; } }
 
