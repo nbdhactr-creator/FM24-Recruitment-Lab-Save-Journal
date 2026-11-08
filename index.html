@@ -3774,7 +3774,7 @@ function fillTacticUI(){
   const prevL = $('xileague').value || S.save.myLeague || lg[0];
   $('xileague').innerHTML = lg.map(d => `<option value="${esc(d)}"${d===prevL?' selected':''}>${esc(d)}</option>`).join('');
   const gs = S.save.groups || [], prevG = $('grpsel').value;
-  $('grpsel').innerHTML = '<option value="">Benchmark: the selected league</option>' + gs.map((g,i) => `<option value="${i}"${String(i)===prevG?' selected':''}>Benchmark: ${esc(g.name)}</option>`).join('');
+  $('grpsel').innerHTML = '<option value="">Choose a comparison group</option>' + gs.map((g,i) => `<option value="${i}"${String(i)===prevG?' selected':''}>${esc(g.name)}</option>`).join('');
   renderSlots();
 }
 function renderSlots(){
