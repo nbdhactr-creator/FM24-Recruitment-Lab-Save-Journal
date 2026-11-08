@@ -2176,6 +2176,10 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     <div class="field"><label for="imp-label">Season</label><input id="imp-label" type="text" placeholder="The season in your save, written yyyy/yy"></div>
     <div class="field"><label for="imp-stage">Season progress</label><select id="imp-stage"><option value="1">Full season</option><option value="0.75">Three-quarters</option><option value="0.5">Half season</option><option value="0.25">Quarter season</option></select><p class="hint" id="imp-stagehint">For an import taken mid-season. It scales the minute floor, confidence bars and shrinkage.</p></div>
     <div class="field"><label for="imp-file">FM player-search export (.html)</label><input id="imp-file" type="file" accept=".html,.htm,text/html"></div>
+    <section id="imp-audit" class="panel" hidden style="padding:12px 14px;margin:10px 0;background:var(--panel2);border:1px solid var(--line)">
+      <b style="display:block;margin-bottom:8px">Import data check</b>
+      <div id="imp-audit-body"></div>
+    </section>
     <p class="hint">Use the same view every season so the history lines up. If a season label already exists in this save, it's replaced and the earlier import is kept for progress tracking.</p>
     <div class="progress" id="imp-prog" hidden><span></span></div>
     <p class="hint" id="imp-status"></p>
@@ -3934,17 +3938,57 @@ document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener
 function openImport(newSave){
   $('imp-save').innerHTML = S.saves.map(s => `<option value="${s.id}"${S.save && s.id===S.save.id && !newSave?' selected':''}>${esc(s.name)}</option>`).join('') + `<option value="__new"${newSave||!S.saves.length?' selected':''}>New save</option>`;
   $('imp-newname-wrap').hidden = $('imp-save').value !== '__new'; $('imp-label').value = $('imp-save').value === '__new' ? '' : nextLabel(S.save);
-  $('imp-status').textContent = ''; $('imp-prog').hidden = true; $('imp-file').value = ''; IMPC.file = null; IMPC.obj = null; $('imp-stage').value = '1';
+  $('imp-status').textContent = ''; $('imp-prog').hidden = true; $('imp-file').value = ''; IMPC.file = null; IMPC.obj = null; renderImportAudit(null); $('imp-stage').value = '1';
   $('imp-stagehint').textContent = 'For an import taken mid-season. It scales the minute floor, confidence bars and shrinkage.'; openDialog('dlg-import');
 }
-$('imp-save').onchange = () => { $('imp-newname-wrap').hidden = $('imp-save').value !== '__new'; const s = S.saves.find(x => x.id === $('imp-save').value); $('imp-label').value = s ? nextLabel(s) : ''; };
+$('imp-save').onchange = () => { $('imp-newname-wrap').hidden = $('imp-save').value !== '__new'; const s = S.saves.find(x => x.id === $('imp-save').value); $('imp-label').value = s ? nextLabel(s) : ''; renderImportAudit(IMPC.obj); };
+$('imp-label').addEventListener('input',()=>renderImportAudit(IMPC.obj));
 $('btn-import').onclick = () => openImport(false); $('btn-first').onclick = () => openImport(true);
 const IMPC = {file:null, obj:null};
+function renderImportAudit(obj){
+  const box=$('imp-audit'), body=$('imp-audit-body');
+  if(!box||!body)return;
+  if(!obj){box.hidden=true;body.innerHTML='';return;}
+  const ix=Object.fromEntries(obj.cols.map((c,i)=>[c,i]));
+  const groups=new Map(), fallback=new Map();
+  let noUID=0;
+  obj.rows.forEach(r=>{
+    const uid=ix.UID==null?'':String(r[ix.UID]||'').trim();
+    const name=String(r[ix.Name]||'').trim(),club=String(r[ix.Club]||'').trim(),div=String(r[ix.Division]||'').trim();
+    if(!uid){noUID++;const k=name.toLocaleLowerCase()+'|'+club.toLocaleLowerCase();fallback.set(k,(fallback.get(k)||0)+1);}
+    if(club){const k=club+'|'+div;groups.set(k,(groups.get(k)||0)+1);}
+  });
+  const duplicateUIDs=obj.integrity?.duplicateUIDs||[];
+  const duplicateUIDRows=duplicateUIDs.reduce((n,x)=>n+x.count,0);
+  const duplicateFallbacks=[...fallback.values()].filter(n=>n>1).length;
+  const warnings=[];
+  if(ix.UID==null)warnings.push('No UID column: players will use cautious name-and-club fallback identities.');
+  else if(noUID)warnings.push(noUID+' row(s) have no UID and will use fallback identities.');
+  if(duplicateUIDs.length)warnings.push(duplicateUIDs.length+' duplicate UID group(s) across '+duplicateUIDRows+' rows. They will be kept separate and flagged.');
+  if(duplicateFallbacks)warnings.push(duplicateFallbacks+' ambiguous name-and-club identity group(s). Those rows will be kept separate.');
+  if(ix.Club==null)warnings.push('No Club column: My Club recognition and club comparisons will be limited.');
+  if(ix.Division==null)warnings.push('No Division column: competition-aware matching will be limited.');
+  if(ix.Mins==null)warnings.push('No Mins column: per-90 and minutes-based reliability checks will be unavailable.');
+  const sid=$('imp-save')?.value,label=$('imp-label')?.value.trim();
+  const save=S.saves.find(x=>x.id===sid);
+  const replacing=save&&label&&(save.seasons||[]).some(x=>x.label===label);
+  body.innerHTML='<div class="grid g2" style="gap:8px">'+
+    '<div><small class="rl-sub">Player rows</small><b style="display:block">'+obj.rows.length.toLocaleString()+'</b></div>'+
+    '<div><small class="rl-sub">Columns retained</small><b style="display:block">'+obj.cols.length+'</b></div>'+
+    '<div><small class="rl-sub">Club / competition groups</small><b style="display:block">'+groups.size+'</b></div>'+
+    '<div><small class="rl-sub">Rows without UID</small><b style="display:block">'+noUID+'</b></div>'+
+    '<div><small class="rl-sub">Duplicate UID groups</small><b style="display:block">'+duplicateUIDs.length+'</b></div>'+
+    '<div><small class="rl-sub">Ambiguous fallback groups</small><b style="display:block">'+duplicateFallbacks+'</b></div></div>'+
+    (warnings.length?'<div style="margin-top:9px;color:var(--amber)"><b>Review</b><ul style="margin:5px 0 0;padding-left:18px">'+warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':'<p class="hint" style="margin:8px 0 0">No obvious identity or structure warnings detected.</p>')+
+    (replacing?'<p class="hint" style="margin:8px 0 0">This save already has '+esc(label)+'. Importing will replace the active season snapshot and keep the previous import in history.</p>':'');
+  box.hidden=false;
+}
 $('imp-file').addEventListener('change', async () => { const f = $('imp-file').files && $('imp-file').files[0]; IMPC.file = null; IMPC.obj = null; if (!f) return;
   $('imp-stagehint').textContent = 'Reading the file to suggest how far through the season it is…';
   try { const obj = parseExport(await f.text()); if ($('imp-file').files[0] !== f) return; IMPC.file = f; IMPC.obj = obj; const sg = suggestProgress(obj); $('imp-stage').value = String(sg.v);
-    $('imp-stagehint').textContent = sg.top ? `Suggested from the minutes in the file: the busiest players have about ${Math.round(sg.top / 10) * 10 >= 1000 ? (Math.round(sg.top / 100) * 100).toLocaleString() : Math.round(sg.top)} minutes. Change it if that's wrong.` : 'No minutes column found, so full season is assumed.'; }
-  catch(e){ $('imp-stagehint').textContent = 'For an import taken mid-season. It scales the minute floor, confidence bars and shrinkage.'; } });
+    $('imp-stagehint').textContent = sg.top ? `Suggested from the minutes in the file: the busiest players have about ${Math.round(sg.top / 10) * 10 >= 1000 ? (Math.round(sg.top / 100) * 100).toLocaleString() : Math.round(sg.top)} minutes. Change it if that's wrong.` : 'No minutes column found, so full season is assumed.';
+    renderImportAudit(obj); }
+  catch(e){ renderImportAudit(null); $('imp-status').textContent='Could not read this as an FM24 player-search export: '+(e.message||'unknown format'); $('imp-stagehint').textContent = 'Choose an FM24 player-search export saved as a Web Page (.html).'; } });
 function prog(p, msg){ $('imp-prog').hidden = false; $('imp-prog').querySelector('span').style.width = p + '%'; if (msg) $('imp-status').textContent = msg; }
 $('imp-go').onclick = async () => {
   const f = $('imp-file').files && $('imp-file').files[0], label = $('imp-label').value.trim();
