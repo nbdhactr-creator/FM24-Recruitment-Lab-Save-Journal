@@ -2765,8 +2765,8 @@ function renderTeamIntelligence(){
   if(rs) rs.onchange=()=>{TI.rosterSort=rs.value;renderTeamIntelligence();};
   const compareKeyForInput=input=>{const match=all.find(t=>t.club+' — '+(t.div||'Unknown competition')===input.value);return match?norm(match.club)+'|'+norm(match.div):null;};
   const ca=$('ti-compare-a'), cb=$('ti-compare-b');
-  if(ca) ca.onchange=()=>{const key=compareKeyForInput(ca);if(key){TI.compareA=key;renderTeamIntelligence();}else{ca.setCustomValidity('Choose a club from the suggestions.');ca.reportValidity();}};
-  if(cb) cb.onchange=()=>{const key=compareKeyForInput(cb);if(key){TI.compareB=key;renderTeamIntelligence();}else{cb.setCustomValidity('Choose a club from the suggestions.');cb.reportValidity();}};
+  if(ca){ca.oninput=()=>ca.setCustomValidity('');ca.onchange=()=>{const key=compareKeyForInput(ca);if(key){TI.compareA=key;renderTeamIntelligence();}else{ca.setCustomValidity('Choose a club from the suggestions.');ca.reportValidity();}};}
+  if(cb){cb.oninput=()=>cb.setCustomValidity('');cb.onchange=()=>{const key=compareKeyForInput(cb);if(key){TI.compareB=key;renderTeamIntelligence();}else{cb.setCustomValidity('Choose a club from the suggestions.');cb.reportValidity();}};}
   root.querySelectorAll('[data-ti-key]').forEach(b=>b.onclick=()=>{TI.selected=b.dataset.tiKey;renderTeamIntelligence();});
   root.querySelectorAll('[data-ti-set]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSet;await persist();renderTeamIntelligence();toast('My Club confirmed');});
 }
