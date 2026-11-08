@@ -903,7 +903,7 @@ i.lg{width:10px;height:10px;border-radius:50%;display:inline-block}
 .pipe .stage b{font:700 30px/1 var(--display)}
 .pipe .stage small{color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pipe .arrow{align-self:center;color:var(--faint);flex:none}
-.slbar{margin:0 0 10px;overflow-x:auto}
+.slbar{margin:0 0 10px;overflow-x:auto}.slbar-main{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:max-content;flex-wrap:wrap}.slneed-controls{display:flex;align-items:center;gap:10px}.slneed-controls label{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:11px;white-space:nowrap}.slneed-controls select{min-height:32px;padding:5px 26px 5px 9px;font-size:11.5px}
 .sltable td{vertical-align:middle}
 .sltable .plc{display:flex;align-items:center;gap:10px;min-width:200px}
 .sltable .ini{width:28px;height:28px}
@@ -3667,28 +3667,48 @@ $('ix-ok').addEventListener('click', async () => { const st = ixStats(); if (st.
   if (ixAxisFor === 'y') SC.y = 'cix:' + c.id; else SC.x = 'cix:' + c.id; scSaveLocal(); $('dlg-idx').close(); toast(`${name} saved`); renderScatter(); });
 
 /* ================= Shortlist page ================= */
-const SLV = {filter:'all', lens:'', list:'first'};
+const SLV = {filter:'all', lens:'', list:'first', needFilter:'all', needSort:'priority'};
 try { if (localStorage.getItem('rlabp-sllist') === 'pros') SLV.list = 'pros'; } catch(e){}
 function slRole(p){ const r = roleById[SLV.lens]; if (r) return r; const rs = rolesFor(p).map(q => ({q, sc:roleScore(p, q)})).filter(o => o.sc != null).sort((a, b) => b.sc - a.sc); return rs[0] ? rs[0].q : null; }
 function renderShortlist(){
   const root = $('sl-root'); if (S.tab === 'shortlist') $('main').classList.toggle('wide', SLV.view === 'squad' && SLV.list !== 'pros'); if (!S.save){ root.innerHTML = `<div class="panel"><div class="phead"><h2>Shortlist</h2></div><div class="grp"><p style="margin:0 0 12px;color:var(--ink2)">Each save keeps its own shortlist. Start a save to use it.</p><div class="row"><button class="btn primary" type="button" data-act="newsave">Start a save</button><button class="btn" type="button" data-act="import">Import a season</button></div></div></div>`; return; }
   const K = SLV.list, isP = K === 'pros', L = slList(K); const cnt = {all:L.length}; SL_STATUS.forEach(([k]) => { cnt[k] = L.filter(x => (x.status || 'watching') === k).length; });
   const nF = slList('first').length, nP = slList('pros').length;
-  const rows = L.filter(x => SLV.filter === 'all' || (x.status || 'watching') === SLV.filter);
+  const baseRows = L.filter(x => SLV.filter === 'all' || (x.status || 'watching') === SLV.filter);
+  const squadBuild = !isP && SLV.view !== 'squad' && S.season && S.save.myClub ? ssBuild(curTac()) : null;
+  const squadLookup = new Map();
+  if (squadBuild) squadBuild.slots.forEach(slot => slot.list.forEach(o => squadLookup.set(o.p.key, {slot, score:o.sc})));
+  const unplacedKeys = new Set((squadBuild ? squadBuild.unplaced : []).map(o => o.p.key));
+  const needMeta = new Map();
+  const needOf = x => {
+    if (isP || !S.season || !S.save.myClub || (x.status || 'watching') === 'rejected') return {key:'unavailable', rank:5, gap:null, score:null};
+    const p = playerByKey(x.key); if (!p) return {key:'noScore', rank:4, gap:null, score:null};
+    const fit = squadLookup.get(p.key);
+    if (fit){ const gap = fit.slot.st && fit.score != null ? fit.score - fit.slot.st.sc : null;
+      return {key:gap != null && gap > 0 ? 'upgrade' : gap === 0 ? 'level' : 'depth', rank:gap != null && gap > 0 ? 0 : gap === 0 ? 2 : 1, gap, score:fit.score}; }
+    if (unplacedKeys.has(p.key)) return {key:'noFit', rank:3, gap:null, score:null};
+    return {key:'noScore', rank:4, gap:null, score:null};
+  };
+  baseRows.forEach(x => needMeta.set(x.key, needOf(x)));
+  let rows = baseRows.filter(x => SLV.needFilter === 'all' || needMeta.get(x.key).key === SLV.needFilter);
+  if (!isP && SLV.needSort === 'priority') rows.sort((a,b) => {
+    const A=needMeta.get(a.key), B=needMeta.get(b.key);
+    return A.rank-B.rank || ((B.gap ?? -999)-(A.gap ?? -999)) || ((B.score ?? -1)-(A.score ?? -1));
+  });
+  else if (SLV.needSort === 'score') rows.sort((a,b) => ((needMeta.get(b.key).score ?? -1)-(needMeta.get(a.key).score ?? -1)));
+  else if (SLV.needSort === 'age') rows.sort((a,b) => ((playerByKey(a.key)?.age ?? 999)-(playerByKey(b.key)?.age ?? 999)));
+  else if (SLV.needSort === 'added') rows.sort((a,b) => String(b.added || '').localeCompare(String(a.added || '')));
   const lensOpts = '<option value="">Each player’s best role</option>' + roleOptions(SLV.lens);
   let h = `<div class="pagehead"><div><h1>Shortlist</h1><p>${esc(S.save.name)}. ${isP ? 'Young players you’re following before they’re ready for the first team. Add them from Prospects in Explore or from their profile.' : 'Players you’re tracking, moved through the pipeline as the window goes on. Add players from their profile, Compare or Scatter.'}</p></div>
     <div class="acts">${isP ? '' : `<span class="seg" role="group" aria-label="View"><button type="button" data-slv="list" aria-pressed="${SLV.view !== 'squad'}">List</button><button type="button" data-slv="squad" aria-pressed="${SLV.view === 'squad'}">Shadow squad</button></span>`}${!isP && SLV.view === 'squad' ? '' : `<div class="field"><label for="sl-lens">Role score</label><select id="sl-lens">${lensOpts}</select></div><button class="btn" type="button" id="sl-cmp"${rows.length ? '' : ' disabled'}>Compare top 4</button>`}</div></div>
     <div class="sltabs" role="tablist" aria-label="Lists"><button type="button" role="tab" data-list="first" aria-selected="${!isP}">First team <span>${nF}</span></button><button type="button" role="tab" data-list="pros" aria-selected="${isP}">Prospects <span>${nP}</span></button></div>
     <div class="pipe">${SL_STATUS.map(([k, l], i) => `<button type="button" class="stage${SLV.filter === k ? ' on' : ''}" data-f="${k}"><span class="sn">${i + 1}</span><span class="sl">${slIcon(k)}${l}</span><b>${cnt[k]}</b><small>${esc(L.filter(x => (x.status || 'watching') === k).slice(0, 3).map(x => surname(x.name)).join(', ') || '–')}</small></button>`).join('<span class="arrow" aria-hidden="true">→</span>')}</div>
-    <div class="slbar"><span class="seg sm" role="group" aria-label="Filter"><button type="button" data-f="all" aria-pressed="${SLV.filter === 'all'}">All ${cnt.all}</button>${SL_STATUS.map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${SLV.filter === k}">${l} ${cnt[k]}</button>`).join('')}</span></div>`;
+    <div class="slbar"><div class="slbar-main"><span class="seg sm" role="group" aria-label="Filter"><button type="button" data-f="all" aria-pressed="${SLV.filter === 'all'}">All ${cnt.all}</button>${SL_STATUS.map(([k, l]) => `<button type="button" data-f="${k}" aria-pressed="${SLV.filter === k}">${l} ${cnt[k]}</button>`).join('')}</span>
+    ${!isP ? `<div class="slneed-controls"><label>Squad need <select id="sl-need-filter" ${S.season && S.save.myClub ? '' : 'disabled'}><option value="all">All needs</option><option value="upgrade" ${SLV.needFilter==='upgrade'?'selected':''}>Upgrade</option><option value="depth" ${SLV.needFilter==='depth'?'selected':''}>Depth</option><option value="level" ${SLV.needFilter==='level'?'selected':''}>Level</option><option value="noFit" ${SLV.needFilter==='noFit'?'selected':''}>No tactic fit</option><option value="noScore" ${SLV.needFilter==='noScore'?'selected':''}>No scored fit</option></select></label><label>Sort by <select id="sl-need-sort"><option value="priority" ${SLV.needSort==='priority'?'selected':''}>Squad priority</option><option value="score" ${SLV.needSort==='score'?'selected':''}>Role score</option><option value="age" ${SLV.needSort==='age'?'selected':''}>Age</option><option value="added" ${SLV.needSort==='added'?'selected':''}>Recently added</option></select></label></div>` : ''}</div></div>`;
   if (!isP && SLV.view === 'squad'){ h = h.slice(0, h.indexOf('<div class="pipe">')) + ssHtml(); root.innerHTML = h; bindSl(root); return; }
   if (!L.length){ h += isP ? `<div class="panel cmpempty"><div><h2>No prospects yet</h2><p>Open Prospects in Explore to find young players doing well in limited minutes, then use ☆ Prospects on a row or Add to prospects on a player’s profile.</p></div><div class="qa"><button class="btn primary" type="button" id="sl-goprospects">Find prospects</button><button class="btn" type="button" id="sl-search">Search for a player</button></div></div>`
     : `<div class="panel cmpempty"><div><h2>Your shortlist is empty</h2><p>Open a player and choose Add to shortlist, use + Add to shortlist on Compare, or drag a box on Scatter and add the selection.</p></div><div class="qa"><button class="btn primary" type="button" data-tab="scatter">Open Scatter</button><button class="btn" type="button" id="sl-search">Search for a player</button></div></div>`; root.innerHTML = h; bindSl(root); return; }
   const lens = roleById[SLV.lens];
-  const squadBuild = !isP && S.season && S.save.myClub ? ssBuild(curTac()) : null;
-  const squadLookup = new Map();
-  if (squadBuild) squadBuild.slots.forEach(s => s.list.forEach(o => squadLookup.set(o.p.key, {slot:s, score:o.sc})));
-  const unplacedKeys = new Set((squadBuild ? squadBuild.unplaced : []).map(o => o.p.key));
   h += `<div class="tablewrap"><table class="sltable"><thead><tr><th>Player</th><th class="num">Age</th><th>Position</th><th class="num">${lens ? esc(roleShortAbbr(lens)) : 'Best role'}</th>${isP ? `<th class="num" title="Role score against players aged ${PR.maxAge} or under in the position">Age-group score</th><th class="num">Minutes</th>` : '<th>Squad fit</th>'}<th class="num">Value</th><th class="num">Contract</th><th>Status</th><th>Reason or note</th><th class="num">Added</th><th><span class="sr">Actions</span></th></tr></thead><tbody>`;
   rows.forEach(x => { const p = playerByKey(x.key), mine = p ? isMine(p) : (S.save.myClub && x.club === S.save.myClub), st = x.status || 'watching';
     const r = p ? slRole(p) : null, sc = p && r ? roleScore(p, r) : null, ci = cmpSlot(x.key);
@@ -3720,7 +3740,9 @@ function bindSl(root){
       const r = roleById[SLV.lens]; const top = L.map(p => ({p, sc: roleScore(p, r || slRole(p)) ?? -1})).sort((a, b) => b.sc - a.sc).slice(0, 4).map(o => o.p.key);
       S.cmp = top; cmpTrim(); persistCmp(); if (r){ $('cmprole').value = r.id; S.cmpRoleLocked = true; } else S.cmpRoleLocked = false; setTab('compare'); } };
   root.onchange = e => { const s = e.target.closest('[data-st]'); if (s){ slPatch(s.dataset.st, {status:s.value}, false, SLV.list); renderShortlist(); return; }
-    if (e.target.id === 'sl-lens'){ SLV.lens = e.target.value; renderShortlist(); } };
+    if (e.target.id === 'sl-lens'){ SLV.lens = e.target.value; renderShortlist(); return; }
+    if (e.target.id === 'sl-need-filter'){ SLV.needFilter = e.target.value; renderShortlist(); return; }
+    if (e.target.id === 'sl-need-sort'){ SLV.needSort = e.target.value; renderShortlist(); return; } };
   root.oninput = e => { const i = e.target.closest('[data-rs]'); if (i) slPatch(i.dataset.rs, {reason:i.value}, true, SLV.list); };
 }
 
