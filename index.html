@@ -1845,7 +1845,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     <div class="panel">
       <div class="grp" style="margin-bottom:14px"><h2 style="margin:0 0 6px;font-size:18px">What this page answers</h2><p class="hint" style="margin:0">Choose a role and compare its regular starters across leagues. The score is a role-fit measure built from the player’s most relevant attributes and statistics. It helps you compare the standard of players available in each competition; it is not a league strength rating.</p></div>
       <div class="grp"><div class="grid g4">
-        <div class="field"><label for="brole">Role</label><select id="brole"></select></div>
+        <div class="field"><label for="brole">Role</label><div style="display:flex;gap:8px;align-items:stretch"><select id="brole" style="flex:1;min-width:0"></select><button class="btn sm" type="button" id="bm-tactic-toggle" aria-expanded="false" style="white-space:nowrap">Tactic roles</button></div><div id="bm-tactic-menu" hidden style="margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2,rgba(255,255,255,.025))"></div></div>
         <div class="field"><label for="bmins">Regular starter: min minutes</label><input id="bmins" type="number" min="0" step="100" value="1500" inputmode="numeric"></div>
         <div class="field"><label for="bscope">Compare leagues</label><select id="bscope"><option value="all">All leagues</option><option value="top5">Top 5 European leagues</option><option value="top10">Top 10 European leagues</option><option value="my">Your league only</option></select></div>
         <div class="field"><label for="bsort">Sort by</label><select id="bsort"><option value="med">Median role score</option><option value="rep">League reputation</option><option value="n">Number of starters</option></select></div>
@@ -3832,6 +3832,26 @@ function renderBench(){
   $('bm-insight').innerHTML=insight;
   $('bmbody').innerHTML=rowsHtml||'<tr><td colspan="12" class="pclub">No leagues match these settings. Try All leagues or reduce the minutes threshold.</td></tr>';
 }
+function renderBenchTacticMenu(){
+  const tac=S.tac || tacticList()[0], codes=FORMATIONS[tac.formation]||[];
+  const items=codes.map(code=>{const r=roleById[tac.roles[code]];return r?'<button class="btn sm" type="button" data-bm-role="'+esc(r.id)+'" style="text-align:left;white-space:normal">'+esc(SLOT_LABEL[code]+' · '+r.name+' ('+r.dutyName.toLowerCase()+')')+'</button>':'';}).filter(Boolean);
+  const menu=$('bm-tactic-menu');
+  menu.innerHTML='<div class="pclub" style="margin-bottom:8px">ROLES IN '+esc(tac.name||'SELECTED TACTIC')+'</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+(items.join('')||'<span class="hint">No roles found in this tactic.</span>')+'</div>';
+  menu.hidden=false;
+  $('bm-tactic-toggle').setAttribute('aria-expanded','true');
+}
+$('bm-tactic-toggle').addEventListener('click',()=>{
+  const menu=$('bm-tactic-menu');
+  if(menu.hidden) renderBenchTacticMenu();
+  else {menu.hidden=true;$('bm-tactic-toggle').setAttribute('aria-expanded','false');}
+});
+$('bm-tactic-menu').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-bm-role]'); if(!b) return;
+  $('brole').value=b.dataset.bmRole;
+  $('bm-tactic-menu').hidden=true;
+  $('bm-tactic-toggle').setAttribute('aria-expanded','false');
+  renderBench();
+});
 ['brole','bscope','bsort'].forEach(id => $(id).addEventListener('change', renderBench)); $('bmins').addEventListener('input', renderBench);
 
 /* ---------------- Leagues ---------------- */
