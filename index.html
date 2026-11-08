@@ -3776,7 +3776,7 @@ $('imp-go').onclick = async () => {
     if (save.currentSeason && (sy(label) || 0) > (sy(save.currentSeason) || 0)) save.currentSeason = label;
     S.save = save; S.seasonCache.set(save.id + '|' + label, obj);
     prog(85, 'Saving the library'); await persist(); prog(100, 'Done');
-    $('dlg-import').close(); toast(`${label} imported: ${obj.rows.length.toLocaleString()} players${obj.integrity && obj.integrity.duplicateUIDs.length ? ` · ${obj.integrity.duplicateUIDs.length} duplicate UID(s) flagged` : ''}${obj.integrity && obj.integrity.rowsWithoutUID ? ` · ${obj.integrity.rowsWithoutUID} row(s) without UID` : ''}`);
+    $('dlg-import').close(); toast(`${label} imported: ${obj.rows.length.toLocaleString()} players${obj.integrity && obj.integrity.duplicateUIDs.length ? ` · ${obj.integrity.duplicateUIDs.length} duplicate UID(s) flagged` : ''}${obj.integrity && obj.integrity.rowsWithoutUID ? ` · ${obj.integrity.rowsWithoutUID} row(s) without UID` : ''}${obj.integrity && obj.integrity.duplicateFallbacks && obj.integrity.duplicateFallbacks.length ? ` · ${obj.integrity.duplicateFallbacks.length} ambiguous name/club identity group(s)` : ''}`);
     await openSave(save.id, label); maybeSetup();
   } catch(e){ console.error(e); $('imp-status').innerHTML = `<span class="err">${esc(e.code === 'too_large' || e.message === 'too_large' ? 'That season is over the 20 MB storage limit for one file.' : e.code === 'quota_or_state' ? 'Storage for this page is full. Delete an old season or save in Save settings.' : (e.message || 'Import failed.'))}</span>`; }
   $('imp-go').disabled = false;
