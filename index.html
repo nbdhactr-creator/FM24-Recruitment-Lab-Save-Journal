@@ -2737,7 +2737,8 @@ function renderTeamIntelligence(){
   const root=$('teams-root'); if(!root || S.tab!=='teams') return;
   const all=teamRows(), leagues=[...new Set(all.map(t=>t.div).filter(Boolean))].sort();
   const list=all.filter(t=>(!TI.league||t.div===TI.league)&&(!TI.q||norm(t.club).includes(norm(TI.q))||norm(t.div).includes(norm(TI.q))));
-  let me=all.find(t=>norm(t.club)===norm(S.save.myClub));
+  const configuredMatches=all.filter(t=>norm(t.club)===norm(S.save.myClub));
+  let me=configuredMatches.find(t=>norm(t.div)===norm(S.save.myLeague))||(configuredMatches.length===1?configuredMatches[0]:null);
   const saveNameMatches=all.filter(t=>norm(t.club)===norm(S.save.name));
   const recognitionCandidates=!S.save.myClub?saveNameMatches:[];
   if(!me && recognitionCandidates.length===1) me=recognitionCandidates[0];
