@@ -3826,7 +3826,7 @@ function renderTactic(){
   let players = [], title = '';
   if (scope === 'mine'){ players = S.season.players.filter(p => p.club === S.save.myClub); title = S.save.myClub ? `${S.save.myClub}: best XI` : 'Set your club in Save settings'; }
   else if (scope === 'league'){ players = S.season.players.filter(p => p.div === lg); title = `${lg}: best XI`; }
-  else { const g = groups[+gi]; if (g){ const cs = new Set(g.clubs); players = S.season.players.filter(p => cs.has(p.club)); title = `${g.name}: best XI across the group`; } else title = 'Choose a comparison group in the benchmark menu'; }
+  else { const g = gi !== '' ? groups[+gi] : null; if (g){ const cs = new Set(g.clubs); players = S.season.players.filter(p => cs.has(p.club)); title = `${g.name}: best XI across the group`; } else title = 'Choose a comparison group above'; }
   const xi = scope === 'mine' ? bestXIP(players, S.tac, minM, xiPins(S.tac)) : bestXI(players, S.tac, minM);
   $('pitchtitle').textContent = title; $('pitch').innerHTML = pitchSVG(xi, scope !== 'mine');
   // Benchmarks
