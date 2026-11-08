@@ -207,6 +207,24 @@ select:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-
 /* Panels */
 .view{padding:22px 0 80px}
 .view[hidden]{display:none}
+
+/* Benchmarks: keep the full page content fluid instead of allowing nested
+   panels, grids or tables to shrink to their contents on narrow screens. */
+#v-bench{display:block;width:100%;min-width:0;box-sizing:border-box}
+#v-bench>.panel{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+#v-bench .grp,#v-bench .tablewrap,#v-bench .grid{min-width:0;max-width:100%;box-sizing:border-box}
+#v-bench .tablewrap{width:100%;overflow-x:auto}
+#v-bench table{width:100%;min-width:760px}
+#v-bench .grid.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+#v-bench .grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:900px){
+  #v-bench .grid.g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #v-bench .grid.g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  #v-bench .grid.g4,#v-bench .grid.g3{grid-template-columns:minmax(0,1fr)}
+}
+
 .panel{border-radius:10px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.012) 30%),rgba(17,18,21,.72);box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 12px 30px rgba(0,0,0,.35)}
 .phead{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:space-between;align-items:baseline;padding:16px 18px 0}
 .phead h2,.h2{font:700 1.75rem/1.05 var(--display);margin:0;letter-spacing:.01em}
