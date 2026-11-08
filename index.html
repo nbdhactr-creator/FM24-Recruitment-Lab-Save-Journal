@@ -3690,14 +3690,14 @@ function renderShortlist(){
     return {key:'noScore', rank:4, gap:null, score:null};
   };
   baseRows.forEach(x => needMeta.set(x.key, needOf(x)));
-  let rows = baseRows.filter(x => SLV.needFilter === 'all' || needMeta.get(x.key).key === SLV.needFilter);
+  let rows = baseRows.filter(x => isP || !S.season || !S.save.myClub || SLV.needFilter === 'all' || needMeta.get(x.key).key === SLV.needFilter);
   if (!isP && SLV.needSort === 'priority') rows.sort((a,b) => {
     const A=needMeta.get(a.key), B=needMeta.get(b.key);
     return A.rank-B.rank || ((B.gap ?? -999)-(A.gap ?? -999)) || ((B.score ?? -1)-(A.score ?? -1));
   });
-  else if (SLV.needSort === 'score') rows.sort((a,b) => ((needMeta.get(b.key).score ?? -1)-(needMeta.get(a.key).score ?? -1)));
-  else if (SLV.needSort === 'age') rows.sort((a,b) => ((playerByKey(a.key)?.age ?? 999)-(playerByKey(b.key)?.age ?? 999)));
-  else if (SLV.needSort === 'added') rows.sort((a,b) => String(b.added || '').localeCompare(String(a.added || '')));
+  else if (!isP && SLV.needSort === 'score') rows.sort((a,b) => ((needMeta.get(b.key).score ?? -1)-(needMeta.get(a.key).score ?? -1)));
+  else if (!isP && SLV.needSort === 'age') rows.sort((a,b) => ((playerByKey(a.key)?.age ?? 999)-(playerByKey(b.key)?.age ?? 999)));
+  else if (!isP && SLV.needSort === 'added') rows.sort((a,b) => String(b.added || '').localeCompare(String(a.added || '')));
   const lensOpts = '<option value="">Each player’s best role</option>' + roleOptions(SLV.lens);
   let h = `<div class="pagehead"><div><h1>Shortlist</h1><p>${esc(S.save.name)}. ${isP ? 'Young players you’re following before they’re ready for the first team. Add them from Prospects in Explore or from their profile.' : 'Players you’re tracking, moved through the pipeline as the window goes on. Add players from their profile, Compare or Scatter.'}</p></div>
     <div class="acts">${isP ? '' : `<span class="seg" role="group" aria-label="View"><button type="button" data-slv="list" aria-pressed="${SLV.view !== 'squad'}">List</button><button type="button" data-slv="squad" aria-pressed="${SLV.view === 'squad'}">Shadow squad</button></span>`}${!isP && SLV.view === 'squad' ? '' : `<div class="field"><label for="sl-lens">Role score</label><select id="sl-lens">${lensOpts}</select></div><button class="btn" type="button" id="sl-cmp"${rows.length ? '' : ' disabled'}>Compare top 4</button>`}</div></div>
