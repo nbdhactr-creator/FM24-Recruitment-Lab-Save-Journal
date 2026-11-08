@@ -1405,6 +1405,20 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 .cf-sub{margin:5px 0 0;color:var(--ink2);font-size:13px;max-width:900px}
 .cf-ctl .field input[type=number]{min-height:34px}
 .cf-grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(520px,640px);gap:14px}
+/* Team Intelligence comparison and depth */
+.ti-depth-panel{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.ti-depth-panel h3,.ti-compare-panel h2{margin:0 0 10px}
+.ti-depth-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.ti-depth-cards>div{padding:10px;border:1px solid var(--line);border-radius:8px;display:grid;gap:3px}
+.ti-depth-cards b{font-size:11px;color:var(--muted)}.ti-depth-cards strong{font:700 22px/1 var(--display)}.ti-depth-cards small{font-size:10px;color:var(--muted)}
+.ti-compare-panel{margin-top:14px;padding:16px}
+.ti-compare-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+.ti-compare-grid{display:grid;grid-template-columns:minmax(100px,.7fr) repeat(2,minmax(0,1fr))}
+.ti-compare-grid>div{padding:9px 10px;border-bottom:1px solid var(--line);min-width:0}
+.ti-compare-label{color:var(--muted);font-size:12px}.ti-compare-club{font-weight:700;overflow-wrap:anywhere}.ti-compare-club small{display:block;color:var(--muted);font-weight:400}
+.ti-depth-list{display:grid;gap:5px}.ti-depth-list span{font-size:12px}.ti-depth-list b{display:inline-block;min-width:38px}
+@media(max-width:1100px){.ti-layout{grid-template-columns:minmax(0,1fr)}.ti-team-head{display:none}.ti-team-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.ti-team-row .ti-team-name{grid-column:1/-1;padding-bottom:5px;border-bottom:1px solid rgba(255,255,255,.06)}.ti-metric-label{display:block;color:var(--muted);font-size:10px;margin-bottom:2px}}
+@media(max-width:600px){.ti-compare-controls{grid-template-columns:minmax(0,1fr)}.ti-compare-grid{grid-template-columns:minmax(78px,.65fr) repeat(2,minmax(0,1fr));font-size:12px}.ti-compare-grid>div{padding:8px 5px}.ti-depth-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Team Intelligence has its own responsive layout; do not inherit Club Finder's breakpoint. */
 .ti-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,520px);gap:14px;align-items:start}
 .ti-team-panel{min-width:0;overflow:hidden}
@@ -2677,7 +2691,7 @@ function processSeason(obj, label, opts){
 }
 
 /* ---------------- Team intelligence ---------------- */
-let TI = {q:'', league:'', selected:'', rosterSort:'mins-desc'};
+let TI = {q:'', league:'', selected:'', rosterSort:'mins-desc', compareA:'', compareB:''};
 function teamRows(){
   if (!S.season) return [];
   const by = new Map();
@@ -2695,6 +2709,18 @@ function teamRows(){
     const coverage=t.players.length>=15?'High':t.players.length>=8?'Moderate':'Insufficient';
     return {...t,n:t.players.length,avgAge:ages.length?ages.reduce((a,b)=>a+b,0)/ages.length:null,avgRating:ratings.length?ratings.reduce((a,b)=>a+b,0)/ratings.length:null,totalMins:mins.length?mins.reduce((a,b)=>a+b,0):null,value:vals.length===t.players.length?vals.reduce((a,b)=>a+b,0):null,wage:wages.length===t.players.length?wages.reduce((a,b)=>a+b,0):null,knownValues:vals.length,knownWages:wages.length,posCount:pos.size,coverage};
   }).sort((a,b)=>b.n-a.n || a.club.localeCompare(b.club));
+}
+function tiPositionDepth(team){
+  const groups=[['GK',p=>p.slots.has('GK')],['DEF',p=>[...p.slots].some(x=>x.startsWith('D-'))],['MID',p=>[...p.slots].some(x=>x==='DM'||x.startsWith('M-')||x.startsWith('AM-'))],['FWD',p=>p.slots.has('ST')]];
+  return groups.map(([label,test])=>({label,players:team.players.filter(test)}));
+}
+function tiCompareMarkup(teams){
+  const key=t=>norm(t.club)+'|'+norm(t.div);
+  const a=teams.find(t=>key(t)===TI.compareA)||teams[0], b=teams.find(t=>key(t)===TI.compareB)||teams.find(t=>t!==a);
+  if(!a||!b)return '<p class="empty">Import at least two club squads to compare them.</p>';
+  const rows=[['Players',t=>t.n,v=>String(v)],['Average age',t=>t.avgAge,v=>v.toFixed(1)],['Average rating',t=>t.avgRating,v=>v.toFixed(2)],['Total minutes',t=>t.totalMins,v=>Math.round(v).toLocaleString()],['Squad value',t=>t.value,v=>money(v)],['Weekly wage bill',t=>t.wage,v=>money(v)]];
+  const da=tiPositionDepth(a),db=tiPositionDepth(b);
+  return `<div class="ti-compare-controls"><div class="field"><label for="ti-compare-a">Club A</label><select id="ti-compare-a">${teams.map(t=>`<option value="${esc(key(t))}"${key(t)===key(a)?' selected':''}>${esc(t.club)} · ${esc(t.div||'Unknown competition')}</option>`).join('')}</select></div><div class="field"><label for="ti-compare-b">Club B</label><select id="ti-compare-b">${teams.map(t=>`<option value="${esc(key(t))}"${key(t)===key(b)?' selected':''}>${esc(t.club)} · ${esc(t.div||'Unknown competition')}</option>`).join('')}</select></div></div><div class="ti-compare-grid"><div></div><div class="ti-compare-club"><b>${esc(a.club)}</b><small>${esc(a.div||'Competition not supplied')}</small></div><div class="ti-compare-club"><b>${esc(b.club)}</b><small>${esc(b.div||'Competition not supplied')}</small></div>${rows.map(([label,get,show])=>`<div class="ti-compare-label">${label}</div><div>${get(a)==null?'—':show(get(a))}</div><div>${get(b)==null?'—':show(get(b))}</div>`).join('')}<div class="ti-compare-label">Positional depth</div><div class="ti-depth-list">${da.map(d=>`<span><b>${d.label}</b> ${d.players.length}</span>`).join('')}</div><div class="ti-depth-list">${db.map(d=>`<span><b>${d.label}</b> ${d.players.length}</span>`).join('')}</div></div><p class="hint">Position groups count players whose exported positions include that group. Players can appear in more than one group; counts do not imply starter quality.</p>`;
 }
 function tiRosterSorted(players){
   const [key,dir] = (TI.rosterSort||'mins-desc').split('-');
@@ -2729,12 +2755,14 @@ function renderTeamIntelligence(){
   <section class="panel ti-detail" style="padding:18px;align-self:start">${chosen?`<h2 style="margin:0 0 4px">${esc(chosen.club)}</h2><p class="hint" style="margin:0 0 14px">${esc(chosen.div||'Competition not supplied')} · ${chosen.coverage} data coverage</p>
   <div class="grid g2"><div><small class="rl-sub">Squad rows</small><h2>${chosen.n}</h2></div><div><small class="rl-sub">Average age</small><h2>${metric(chosen.avgAge,v=>v.toFixed(1))}</h2></div><div><small class="rl-sub">Average rating</small><h2>${metric(chosen.avgRating,v=>v.toFixed(2))}</h2></div><div><small class="rl-sub">Total minutes</small><h2>${metric(chosen.totalMins,v=>Math.round(v).toLocaleString())}</h2></div><div><small class="rl-sub">Squad value</small><h2>${chosen.value==null?'—':money(chosen.value)}</h2><small class="rl-sub">${chosen.knownValues}/${chosen.n} values known</small></div><div><small class="rl-sub">Weekly wage bill</small><h2>${chosen.wage==null?'—':money(chosen.wage)}</h2><small class="rl-sub">${chosen.knownWages}/${chosen.n} wages known</small></div><div><small class="rl-sub">Position slots covered</small><h2>${chosen.posCount}</h2></div><div><small class="rl-sub">Coverage tier</small><h2>${chosen.coverage}</h2></div></div>
   <div class="ti-roster-head"><h3 style="margin:18px 0 8px">Squad roster <small class="rl-sub" style="display:inline">(${chosen.n} players)</small></h3><div class="field"><label for="ti-roster-sort">Sort roster</label><select id="ti-roster-sort">${rosterOptions.map(([v,l])=>`<option value="${v}"${TI.rosterSort===v?' selected':''}>${l}</option>`).join('')}</select></div></div>
-  <div class="ti-roster-list"><div class="ti-roster-columns"><span>Player</span><span>Minutes</span><span>Av Rat.</span></div>${roster.map(p=>`<div class="ti-player-row"><span class="ti-player-name"><b>${esc(p.name||'Unknown player')}</b><small>${esc(p.pos||'Position unknown')} · Age ${esc(p.age??'—')}</small></span><span>${p.mins==null?'—':Math.round(p.mins).toLocaleString()+'m'}</span><span>${p.s['Av Rat']==null?'—':p.s['Av Rat'].toFixed(2)}</span></div>`).join('')}</div>`: '<p class="empty">Select a club to inspect its squad.</p>'}</section></div>
+  <div class="ti-roster-list"><div class="ti-roster-columns"><span>Player</span><span>Minutes</span><span>Av Rat.</span></div>${roster.map(p=>`<div class="ti-player-row"><span class="ti-player-name"><b>${esc(p.name||'Unknown player')}</b><small>${esc(p.pos||'Position unknown')} · Age ${esc(p.age??'—')}</small></span><span>${p.mins==null?'—':Math.round(p.mins).toLocaleString()+'m'}</span><span>${p.s['Av Rat']==null?'—':p.s['Av Rat'].toFixed(2)}</span></div>`).join('')}</div><div class="ti-depth-panel"><h3>Positional depth</h3><div class="ti-depth-cards">${chosen?tiPositionDepth(chosen).map(d=>`<div><b>${d.label}</b><strong>${d.players.length}</strong><small>players</small></div>`).join(''):''}</div></div>`: '<p class="empty">Select a club to inspect its squad.</p>'}</section></div>
+  <section class="panel ti-compare-panel"><h2>Team comparison</h2><p class="hint">Compare two imported club squads using available export data.</p>${tiCompareMarkup(all)}</section>
   <p class="hint" style="margin-top:10px">Coverage: High = 15+ imported player rows; Moderate = 8–14; Insufficient = fewer than 8. Values and wages are shown only when every row in that club group has a parsed value. These are export-based squad snapshots, not official club accounts or league standings.</p>`;
   const q=$('ti-q'), lg=$('ti-league'), rs=$('ti-roster-sort');
   q.oninput=()=>{const value=q.value, caret=q.selectionStart;TI.q=value;renderTeamIntelligence();const next=$('ti-q');next.focus();next.setSelectionRange(caret,caret);};
   lg.onchange=()=>{TI.league=lg.value;renderTeamIntelligence();};
   if(rs) rs.onchange=()=>{TI.rosterSort=rs.value;renderTeamIntelligence();};
+  const ca=$('ti-compare-a'), cb=$('ti-compare-b'); if(ca) ca.onchange=()=>{TI.compareA=ca.value;renderTeamIntelligence();}; if(cb) cb.onchange=()=>{TI.compareB=cb.value;renderTeamIntelligence();};
   root.querySelectorAll('[data-ti-key]').forEach(b=>b.onclick=()=>{TI.selected=b.dataset.tiKey;renderTeamIntelligence();});
   root.querySelectorAll('[data-ti-set]').forEach(b=>b.onclick=async()=>{S.save.myClub=b.dataset.tiSet;await persist();renderTeamIntelligence();toast('My Club confirmed');});
 }
