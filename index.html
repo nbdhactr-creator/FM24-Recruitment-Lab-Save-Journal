@@ -6980,9 +6980,9 @@ async function rlPreviewMigration(){
     for(const x of docs)rows.push({user_id:uid,id:'doc:'+x.id,data:remap(x.data)});
     for(const x of meta)rows.push({user_id:uid,id:'meta',data:x});
     for(let i=0;i<rows.length;i+=100){const batch=rows.slice(i,i+100);const w=await RL_SUPABASE.from('rl_documents').insert(batch);if(w.error)throw w.error;insertedIds.push(...batch.map(x=>x.id));}
-    const verify=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',uid);
+    const verify=await RL_SUPABASE.from('rl_documents').select('id',{count:'exact',head:true}).eq('user_id',uid);
     if(verify.error)throw verify.error;
-    if((verify.data||[]).length!==rows.length)throw new Error('Verification count did not match the copied records. Do not delete local data; contact support before retrying.');
+    if(verify.count!==rows.length)throw new Error('Verification count did not match the copied records. Do not delete local data; contact support before retrying.');
     localStorage.setItem('rl-cloud-enabled','1');
     say('Migration verified: '+rows.length+' database records copied. Your original local data remains intact. Reloading into cloud mode…');
     setTimeout(()=>location.reload(),900);
