@@ -4872,7 +4872,10 @@ async function openPlayer(key, fallbackPlayer=null){
   const head = `<tr><th>Stat</th>${cols.map(c => `<th class="num">${esc(c.label)}<div class="pclub" style="font-weight:400">${esc(c.p ? [c.p.club,c.sub].filter(Boolean).join(' · ') : (c.sub || ''))}</div></th>`).join('')}</tr>`;
   const line = (lab, fn) => `<tr><td class="pname">${lab}</td>${cols.map(c => `<td class="num">${c.p ? fn(c.p) : '–'}</td>`).join('')}</tr>`;
   const bpRows = b ? b.rows.map(row => line(esc(row[0]), p => { if (!row[4]) return '<span class="tier t-na"><b>page</b></span>'; const v = bpVal(p, row[4]), ok = bpFloorOK(p, row[4]); let t = (v == null || !ok || p.mins < 270) ? 'na' : tierOf(row, v); const pc = ok && v != null ? sqPct(p, row[4], stv, scope) : null; return `<span class="tier t-${t}"><b>${v == null ? '–' : fmt(v, row[4])}</b><small>${pc == null || p.mins < 270 ? '' : 'pct ' + Math.round(pc)}</small></span>`; })).join('') : '';
-  const extra = ['npxG/90', 'xA/90', 'npG-npxG/90', 'Pr passes/90', 'Poss Won/90', 'Pres C/90'].map(k => line(statLabel(k), p => fmt(p.s[k], k))).join('');
+  const extraSection = (label, keys) => `<tr class="cat"><td colspan="${cols.length + 1}" style="background:var(--raised);font:600 .9rem/1 var(--display);color:var(--muted)">${label}</td></tr>` + keys.map(k => line(statLabel(k), p => fmt(p.s[k], k))).join('');
+  const generalExtra = extraSection('Additional performance metrics', ['npxG/90', 'xA/90', 'npG-npxG/90', 'Pr passes/90']);
+  const defensiveExtra = extraSection('Defending, reading & aerial work', ['Tck W/90', 'Tck/90', 'Tck R', 'TklW+Int/90', 'Poss Won/90', 'K Tck/90', 'K Tck share', 'Fls/Tck', 'Errors/90', 'Cards/90', 'Fls/90', 'Int/90', 'Blk/90', 'Clr/90', 'Shts Blckd/90', 'Def actions/90', 'Box def/90', 'Hdr %', 'Hdrs W/90', 'Aer A/90', 'K Hdrs/90', 'K Hdr share', 'Hdrs L/90', 'Pres A/90', 'Pres C/90', 'Press success', 'Pres/km']);
+  const goalkeeperExtra = base.slots && base.slots.has('GK') ? extraSection('Goalkeeping', ['xGP/90', 'Save %', 'Catch rate', 'CS/Start', 'Pen save %', 'Con/90', 'Shots faced/90']) : '';
   const sp = me || base; const tiersNow = b ? b.rows.map(row => { const v = row[4] ? bpVal(sp, row[4]) : null; return (v == null || !bpFloorOK(sp, row[4]) || sp.mins < 270) ? 'na' : tierOf(row, v); }) : [];
   const fl = flagsFor(sp, tiersNow, null, null);
   $('pl-body').innerHTML = `<div class="grid g2">
@@ -4883,7 +4886,7 @@ async function openPlayer(key, fallbackPlayer=null){
       ${line('Minutes', p => Math.round(p.mins || 0))}${line('Appearances', p => p.s['Apps'] == null ? '–' : p.s['Apps'] + (p.s['Sub Apps'] ? ` (${p.s['Sub Apps']} sub)` : ''))}${line('Average rating', p => p.s['Av Rat'] != null ? p.s['Av Rat'].toFixed(2) : '–')}
       ${b ? `<tr class="cat"><td colspan="${cols.length + 1}" style="background:var(--raised);font:600 .9rem/1 var(--display);color:var(--muted)">Blueprint: ${esc(b.name)}</td></tr>` : ''}${bpRows}
       <tr><td class="pname">Role score</td>${cols.map(c => `<td class="num">${c.p && c.p.mins >= 270 ? scoreHtml(sqScore(c.p, role, scope)) : '–'}</td>`).join('')}</tr>
-      <tr class="cat"><td colspan="${cols.length + 1}" style="background:var(--raised);font:600 .9rem/1 var(--display);color:var(--muted)">Underlying numbers</td></tr>${extra}
+      <tr class="cat"><td colspan="${cols.length + 1}" style="background:var(--raised);font:600 .9rem/1 var(--display);color:var(--muted)">Underlying numbers</td></tr>${generalExtra}${defensiveExtra}${goalkeeperExtra}
     </tbody></table></div>
     <p class="hint">Blocks under 270 minutes aren’t graded. Percentiles use the pool chosen in Rank against.</p>`;
   openDialog('dlg-player');
