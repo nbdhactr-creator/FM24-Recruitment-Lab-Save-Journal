@@ -4912,8 +4912,8 @@ async function renderSquadStats(){
   const s=S.save, all=sortCks(s.checkpoints||[]), seasons=[...new Set([...all.map(c=>c.season),S.season&&S.season.label].filter(Boolean))].sort();
   if(!SQ.season||!seasons.includes(SQ.season)) SQ.season=s.currentSeason||seasons[seasons.length-1]||'';
   const cks=all.filter(c=>c.season===SQ.season&&c.ref);
-  let ck=cks.find(c=>c.id===SQ.ckId)||cks[cks.length-1]||null;
-  SQ.ckId=ck?ck.id:null;
+  let ck=SQ.ckId===''?null:(cks.find(c=>c.id===SQ.ckId)||cks[cks.length-1]||null);
+  SQ.ckId=ck?ck.id:(SQ.ckId===''?'':null);
   let view=null,source='';
   try{
     if(ck){view=await stdOf(ck,SQ.season);source=ck.label||ck.date||'Squad checkpoint';}
@@ -4927,7 +4927,7 @@ async function renderSquadStats(){
   if(!view||!view.players||!view.players.length){
     root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}</p></div><div class="grp"><p class="hint">${s.myClub?'No squad rows are available for '+esc(s.myClub)+' in this season. Add a squad checkpoint or check your club setting.':'Set your club in Save settings, then add a squad checkpoint.'}</p><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button></div></div>`;return;
   }
-  const players=view.players, tac=tacticList()[0], assessment=sqRoleAssessment(players,tac);
+  const players=view.players, tacs=tacticList(), tac=tacs.find(t=>t.id===(SQ.tacId||s.sq.assessmentTactic||''))||tacs[0], assessment=sqRoleAssessment(players,tac);
   const groups=['Goalkeepers','Defence','Defensive midfield','Midfield','Attacking midfield','Attack'];
   const groupData=groups.map(name=>{const a=assessment.filter(x=>x.group===name);return {name,items:a,rating:sqRating(a),covered:a.filter(x=>x.score!=null).length,total:a.length,depth:a.reduce((n,x)=>n+x.depth.length,0)};}).filter(x=>x.total);
   const rated=assessment.filter(x=>x.score!=null), overall=sqRating(assessment);
