@@ -2525,7 +2525,7 @@ const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:
       } catch(e){ console.warn('cloud unavailable', e); this.why = 'error ' + (e && (e.code || e.message) || ''); }
       try { const pm = await C.use('permissions'); if (pm) this.perms = await pm.state(); } catch(e){}
     }
-    try { this.idb = this.idb || await openIDB(); this.kind = 'local'; } catch(e){ this.kind = 'none'; }
+    try { this.idb = this.idb || await openIDB(); this.kind = 'local'; } catch(e){ this.kind = 'none'; this.why = 'IndexedDB: ' + (e && (e.name || e.message) || 'open failed'); console.error('Recruitment Lab storage initialization failed', e); }
   },
   async listSaves(){
     if (this.kind === 'cloud'){ const q = await this.col.get(); return q.docs.filter(d => d.id.startsWith('save_')).map(d => Object.assign({id:d.id}, thaw(d.data()))); }
@@ -2567,9 +2567,17 @@ const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:
   async delFile(ref){ try { if (ref && ref.assetId && this.assets) await this.assets.delete(ref.assetId); else if (ref && ref.localId && this.idb) await idbDel(this.idb, 'files', ref.localId); } catch(e){} },
   async usage(){ try { if (this.kind === 'cloud'){ const l = await this.assets.list(); return l.usage; } } catch(e){} return null; }
 };
-function openIDB(){ return new Promise((res, rej) => { const r = indexedDB.open('recruitment-lab', 1);
+function openIDBRequest(version){ return new Promise((res, rej) => { const r = version == null ? indexedDB.open('recruitment-lab') : indexedDB.open('recruitment-lab', version);
   r.onupgradeneeded = () => { const d = r.result; ['saves','seasons','meta','docs','files'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, {keyPath:'id'}); }); };
-  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+  r.onsuccess = () => { const d = r.result; d.onversionchange = () => d.close(); res(d); }; r.onerror = () => rej(r.error || new Error('IndexedDB could not be opened')); }); }
+async function openIDB(){
+  let d = await openIDBRequest();
+  const missing = ['saves','seasons','meta','docs','files'].filter(n => !d.objectStoreNames.contains(n));
+  if (!missing.length) return d;
+  const nextVersion = d.version + 1;
+  d.close();
+  return openIDBRequest(nextVersion);
+}
 function idbTx(d, store, mode, fn){ return new Promise((res, rej) => { const tx = d.transaction(store, mode); const st = tx.objectStore(store); const out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out); tx.onerror = () => rej(tx.error); }); }
 const idbAll = (d,s) => idbTx(d,s,'readonly',st => st.getAll());
 const idbGet = (d,s,k) => idbTx(d,s,'readonly',st => st.get(k));
