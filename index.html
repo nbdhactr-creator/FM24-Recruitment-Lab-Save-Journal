@@ -5221,6 +5221,33 @@ function dofCard(cat, o, ctx, res){ const p = o.p, kind = cat === 'pro' ? 'pros'
 function dofSlotOptions(ctx){ const tac = ctx.tac, rows = slotRows(tac);
   return `<optgroup label="${esc(tac.name)}">${rows.map(d => `<option value="s:${d.code}"${!DOF.role && ctx.code === d.code ? ' selected' : ''}>${esc(SLOT_LABEL[d.code])} · ${esc(roleShort(d.role))}${d.p ? ' · ' + esc(surname(d.p.name)) + ' ' + (d.sc ?? '–') : ' · nobody'}</option>`).join('')}</optgroup>`
     + Object.keys(STRATA).map(st => `<optgroup label="Any role · ${esc(STRATA[st].label)}">${ROLES.filter(r => r.strata === st).map(r => `<option value="r:${r.id}"${DOF.role === r.id ? ' selected' : ''}>${esc(roleShort(r))}</option>`).join('')}</optgroup>`).join(''); }
+function dofPriorityBoard(){
+  const tac=curTac(), rows=slotRows(tac), c=dofCfg(), valid=rows.map(x=>x.code);
+  let selected=Array.isArray(c.priorityCodes)?c.priorityCodes.filter(x=>valid.includes(x)):valid.slice();
+  if(!selected.length) selected=valid.slice();
+  const byKey=new Map(), coverage=[];
+  selected.forEach(code=>{
+    const d=rows.find(x=>x.code===code); if(!d)return;
+    const ctx={role:d.role,code:d.code,starter:d.p?{p:d.p,sc:d.sc}:null,bench:d.b,tac}, res=dofPicks(ctx);
+    const candidates=res.ranked.concat(res.cols.pro.map(o=>Object.assign({},o,{prospect:true})));
+    coverage.push({code,role:d.role,count:candidates.length});
+    candidates.forEach(o=>{const old=byKey.get(o.p.key);
+      if(!old||o.sc>old.o.sc)byKey.set(o.p.key,{o,role:d.role,code,roles:[code]});
+      else if(!old.roles.includes(code))old.roles.push(code);
+    });
+  });
+  return {selected,coverage,ranked:Array.from(byKey.values()).sort((a,b)=>b.o.sc-a.o.sc||(b.o.ph??0)-(a.o.ph??0))};
+}
+function dofPriorityHtml(){
+  const board=dofPriorityBoard(), rows=board.ranked;
+  const picks=board.coverage.map(x=>`<label class="check"><input type="checkbox" data-dof-pos="${esc(x.code)}"${board.selected.includes(x.code)?' checked':''}><span>${esc(SLOT_LABEL[x.code])} · ${esc(roleShort(x.role))} <b>${x.count.toLocaleString()}</b></span></label>`).join('');
+  const list=rows.map((x,i)=>{const p=x.o.p,kind=x.o.prospect?'pros':'first',on=slGet(p.key,kind);return `<div class="rl-row dof-priority-row" data-dof-row data-search="${esc((p.name+' '+p.club+' '+p.pos+' '+x.roles.map(k=>SLOT_LABEL[k]).join(' ')).toLowerCase())}" style="grid-template-columns:34px minmax(0,1fr) minmax(110px,.7fr) 48px 88px auto">
+    <span class="rl-n">${i+1}</span><span style="min-width:0"><button type="button" data-open="${esc(p.key)}" class="rl-ell" style="font-weight:600;text-align:left">${esc(p.name)}</button><span class="rl-sub rl-ell">${esc(p.club)} · ${esc(p.age)} yrs · ${esc(p.pos)}</span></span>
+    <span class="rl-sub">${x.roles.map(k=>esc(SLOT_LABEL[k])).join(', ')}</span><b style="text-align:right">${x.o.sc}</b><span class="rl-sub" style="text-align:right">${esc(valueTxt(p))}</span><span style="display:flex;gap:4px"><button class="btn" type="button" data-dsl="${esc(p.key)}" data-kind="${kind}">${on?'★':'☆'}</button><button class="btn" type="button" data-dcmp="${esc(p.key)}">Compare</button></span></div>`;}).join('');
+  return `<section class="panel dof-priority"><div class="rl-h"><h2>Priority-position recruitment board</h2><span>${rows.length.toLocaleString()} unique candidates · ranked by their best selected-role score</span></div>
+    <div class="dof-priority-picks">${picks}</div><div class="dof-priority-tools"><label class="sr" for="dof-board-search">Search candidates</label><input id="dof-board-search" type="search" placeholder="Search player, club or position"><span class="rl-sub">Counts reflect eligible candidates after your filters. Players matching multiple positions appear once.</span></div>
+    <div class="dof-priority-head"><span>Rank</span><span>Player</span><span>Position coverage</span><span>Score</span><span>Value</span><span>Actions</span></div><div class="dof-priority-list">${list||'<p class="rl-empty">No candidates qualify for the selected positions. Adjust your filters or select other positions.</p>'}</div></section>`;
+}
 function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.tab !== 'dof') return;
   if (!S.save.myClub){ root.innerHTML = `<div class="panel" style="padding:22px"><h2 style="margin:0 0 6px;font:700 22px/1 var(--display)">Set your club first</h2><p style="margin:0;color:var(--ink2)">DoF picks compare every candidate with the player you field in the slot. Choose your club in Settings.</p></div>`; return; }
   const ctx = dofContext(); if (!ctx){ root.innerHTML = '<p class="rl-empty">No tactic to pick from yet.</p>'; return; }
@@ -5245,6 +5272,7 @@ function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.ta
       ${DOF.more ? dofFiltersHtml(c) : (dofFilterCount(c) ? `<p class="dof-fsum">${esc(dofFilterSummary(c))}</p>` : '')}
     </section>
     <div class="dof-board">${cols}</div>
+    ${dofPriorityHtml()}
     <details class="panel dof-excluded"><summary>Excluded candidates · ${res.left.length} with filter conflicts</summary><div class="dof-excluded-list">${res.left.map(x => `<div class="rl-row"><span style="min-width:0"><b>${esc(x.o.p.name)}</b><span class="rl-sub">${esc(x.o.p.club)} · ${esc(x.o.p.pos)} · score ${x.o.sc}</span></span><span class="rl-sub" style="text-align:right;max-width:55%">${esc(x.r.join(' · '))}</span><button class="btn" type="button" data-open="${esc(x.o.p.key)}">Open</button></div>`).join('') || '<p class="rl-empty">No candidates were excluded by the current filters.</p>'}</div></details><p class="dof-foot">${res.ranked.length.toLocaleString()} eligible candidates ranked for ${esc(roleShort(role))} across ${S.season.leagues.length} leagues, including the search positions in your Philosophy. Excluded candidates remain visible above with their reasons.</p>`;
   root.classList.toggle('fitgrow', DOF.more);
   if (!DOF.bound){ DOF.bound = true; bindDof(root); }
@@ -5276,11 +5304,13 @@ function bindDof(root){
       toast(a || p ? `Added ${a} to your shortlist and ${p} to your prospects list` : 'They’re all on your lists already'); renderDof(); } });
   root.addEventListener('change', e => { const t = e.target, c = dofCfg();
     if (t.id === 'dof-slot'){ const v = t.value; if (v.startsWith('s:')){ DOF.slot = v.slice(2); DOF.role = null; } else { DOF.role = v.slice(2); } renderDof(); return; }
+     if(t.dataset.dofPos){const c=dofCfg(),rows=slotRows(curTac()),valid=rows.map(x=>x.code);let a=Array.isArray(c.priorityCodes)?c.priorityCodes.filter(x=>valid.includes(x)):valid.slice();if(!a.length)a=valid.slice();if(t.checked&&!a.includes(t.dataset.dofPos))a.push(t.dataset.dofPos);if(!t.checked)a=a.filter(x=>x!==t.dataset.dofPos);c.priorityCodes=a;persist();renderDof();return;}
     if (t.id === 'dof-refuse') c.refuse = t.checked; else if (t.id === 'dof-against') c.against = t.checked; else if (t.id === 'dof-nfs') c.nfs = t.checked;
     else if (t.id === 'dof-lvl') c.lvl = t.value; else if (t.id === 'dof-conf') c.conf = t.value; else if (t.id === 'dof-contract') c.contract = t.value; else return;
     persist(); renderDof(); });
   root.addEventListener('input', e => { const t = e.target, AK = {'dof-amin':'ageMin', 'dof-amax':'ageMax'};
-    if (AK[t.id]){ const v = num(t.value), c = dofCfg(); if (v == null) delete c[AK[t.id]]; else if (v >= 14 && v <= 45) c[AK[t.id]] = Math.round(v); else return; }
+    if(t.id==='dof-board-search'){const q=t.value.trim().toLowerCase();root.querySelectorAll('[data-dof-row]').forEach(row=>{row.hidden=q&&!row.dataset.search.includes(q);});return;}
+     if (AK[t.id]){ const v = num(t.value), c = dofCfg(); if (v == null) delete c[AK[t.id]]; else if (v >= 14 && v <= 45) c[AK[t.id]] = Math.round(v); else return; }
     else { if (t.id !== 'dof-budget' && t.id !== 'dof-wage') return; const v = num(t.value); if (v == null || v < 0) return; dofCfg()[t.id === 'dof-budget' ? 'budget' : 'wage'] = v; } clearTimeout(DOF.t); DOF.t = setTimeout(() => { persist(); const f = document.activeElement && document.activeElement.id; renderDof(); if (f && $(f)){ const el = $(f); el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch(_){} } }, 500); });
 }
 
