@@ -4979,12 +4979,10 @@ function bindSquad(root){
   });
   root.addEventListener('change', async e => {
     const t = e.target, s = S.save;
-    if (t.id === 'sq-import'){ openImport(false); return; }
     if (t.id === 'sq-season'){ SQ.season = t.value; SQ.ckId = null; renderSquadStats(); return; }
     if (t.id === 'sq-ck'){ SQ.ckId = t.value || ''; renderSquadStats(); return; }
     if (t.id === 'sq-scope'){ SQ.scope = t.value; renderSquadStats(); return; }
     if (t.id === 'sq-tactic'){ SQ.tacId = t.value; s.sq.assessmentTactic = t.value; await persist(); renderSquadStats(); return; }
-    if (t.id === 'sq-ck'){ SQ.ckId = t.value || null; renderSquadStats(); return; }
     if (t.id === 'sq-nodef'){ setNoDef(t.checked); return; }
     if (t.dataset.lens){ s.sq.lens[t.dataset.lens] = t.value; await persist(); renderSquadStats(); return; }
     if (t.id === 'fit-src'){ const f = s.sq.fit; if (t.value === 'custom' && !f.roles.length) f.roles = fitRoles(s).cols.map(c => c.id); f.src = t.value; await persist(); renderSquadStats(); return; }
