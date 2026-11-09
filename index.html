@@ -1635,9 +1635,8 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <span class="tpill" id="seasonpill"><span class="ptxt" id="seasontxt">Season</span><svg class="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5"/></svg><label class="sr" for="seasonsel">Season</label><select id="seasonsel"></select></span>
   <div class="tpill" id="adjpill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false"><i class="dot"></i><span class="ptxt" id="adjtxt">Raw numbers</span>
     <div class="adjpop" id="adjpop" hidden>
-      <label class="check"><input type="checkbox" id="adj"><span>Adjust attacking output for league strength</span></label>
-      <span class="rate"><label for="adjrate">Rate per half-star</label><input id="adjrate" type="number" min="0" max="30" step="1" value="12" inputmode="numeric">%</span>
-      <p id="adjhelp">Optional reputation-based heuristic, not a validated transfer prediction. It scales selected attacking and possession-volume rates before percentiles and role scores are calculated. Keep Raw numbers as your baseline; compare adjusted results as a sensitivity check.</p>
+      <label class="check"><input type="checkbox" id="adj"><span>Adjust per-90 output for league strength</span></label>
+      <p id="adjhelp">Uses the Recruitment Lab tier framework, relative to your selected home league. Every eligible per-90 volume statistic is adjusted before percentiles and role scores. Unknown competitions remain raw and are flagged in League Intelligence; they are never silently assigned an equal-strength multiplier. Percentages and efficiency rates are not scaled.</p>
     </div>
   </div>
 </header>
@@ -1917,8 +1916,8 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
           <div class="field"><label for="lgsort">Sort by</label><select id="lgsort"><option value="rep">Reference reputation</option><option value="players">Player-pool size</option><option value="name">League name</option></select></div>
         </div>
         <p class="hint" id="lgsummary" style="margin:8px 0 10px"></p>
-        <div class="tablewrap"><table><thead><tr><th>League</th><th>FM24 reference</th><th>Reputation gap</th><th class="num">Players</th><th>Data coverage</th><th class="num">Auto factor</th><th>Manual override</th></tr></thead><tbody id="lgbody"></tbody></table></div>
-        <p class="hint" style="margin:10px 0 0">A manual override affects only the selected league's adjusted statistics. Leave it blank to return to the automatic heuristic. A league with no reference match, or a save league that is not matched, falls back to 1.00. “No detected gaps” means the import check found no league-wide missing advanced-stat groups; it does not guarantee complete data.</p>
+        <div class="tablewrap"><table><thead><tr><th>Competition</th><th>Recruitment tier</th><th>Relative tier</th><th class="num">Players</th><th>Data coverage</th><th class="num">Auto multiplier</th><th>Manual override</th></tr></thead><tbody id="lgbody"></tbody></table></div>
+        <p class="hint" style="margin:10px 0 0">Multipliers are based on your saved tier framework and are relative to your selected home league (so your own league is 1.00). Manual overrides are relative multipliers for that competition; leave blank to restore automatic mapping. Unclassified competitions stay raw in adjusted views and are flagged rather than assumed equal to your league. “No detected gaps” means the import check found no league-wide missing advanced-stat groups; it does not guarantee complete data.</p>
       </div>
     </div>
   </section>
@@ -2497,7 +2496,7 @@ function confHi(pr){ return Math.round(2000 * (pr || curProg())); } function con
 function suggestProgress(obj){ const iM = obj.cols.indexOf('Mins'); if (iM < 0) return {v:1, top:null};
   const m = obj.rows.map(r => +r[iM] || 0).sort((a, b) => b - a).slice(0, 50); const top = m[Math.min(25, m.length - 1)] || 0, r = top / 4400;
   return {v: r >= 0.85 ? 1 : r >= 0.6 ? 0.75 : r >= 0.35 ? 0.5 : 0.25, top}; }
-const ADJUSTABLE = new Set(['Gls/90','xG/90','xA/90','Asts/90','Shot/90','ShT/90','Shots Outside Box/90','OP-KP/90','K Ps/90','Ch C/90','Pr passes/90','Drb/90','OP-Crs C/90','Cr C/90','npxG/90','Non-pen G/90','CCC/90','npxG+xA/90','G+A np/90','Prog/90']);
+const ADJUSTABLE = new Set(Object.keys(SMETA).filter(k => /\\/90\\b/.test(k)));
 const CATNAME = {gk:'Goalkeeping', shoot:'Attacking', create:'Attacking', prog:'Possession', retain:'Possession', def:'Defending', read:'Defending', aer:'Aerial', press:'Pressing', phys:'Physical', ctx:'Context'};
 const BANDS = {2:'Higher reputation', 1:'Slightly higher rep.', 0:'Same reputation', '-1':'Slightly lower rep.', '-2':'Lower reputation'};
 const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
@@ -2962,19 +2961,60 @@ function myStars(){ const r = REP.get(norm(S.save && S.save.myLeague)); return r
 function steps(p){ const m = myStars(); return (p.rep && m != null) ? Math.round((p.rep.stars - m) / 0.5) : null; }
 function bandOf(st){ if (st == null) return null; return st >= 2 ? 2 : st <= -2 ? -2 : st; }
 function bandHtml(st){ const b = bandOf(st); return b == null ? '<span class="lvl b-2">Unrated</span>' : `<span class="lvl b${b}">${BANDS[b]}</span>`; }
-function adjSig(){ return $('adj').checked ? myStars() + '|' + (num($('adjrate').value) || 0) : '0'; }
+const LEAGUE_TIER_LABELS = {
+  1:'Elite top-five first division',
+  0.85:'Strong first division / elite second division',
+  0.78:'La Liga 2 reference tier',
+  0.75:'Established professional first division / major second division',
+  0.60:'Professional third tier',
+  0.45:'Semi-professional / fourth tier',
+  0.35:'Regional / fifth tier',
+  0.25:'Highest national youth level',
+  0.15:'Lower youth level'
+};
+const LEAGUE_TIER_EXACT = new Map();
+function addLeagueTier(value, names){ names.forEach(n => LEAGUE_TIER_EXACT.set(norm(n), value)); }
+addLeagueTier(1, ['Premier League','English Premier League','LaLiga','LaLiga EA Sports','La Liga','La Liga EA Sports','Bundesliga','Serie A','Serie A Enilive','Serie A TIM','Ligue 1','Ligue 1 McDonald\'s','Ligue 1 Uber Eats']);
+addLeagueTier(0.85, ['Eredivisie','Liga Portugal Betclic','Primeira Liga','Liga Portugal','Jupiler Pro League','Belgian Pro League','Trendyol Süper Lig','Turkish Super Lig','William Hill Premiership','Scottish Premiership','ADMIRAL Bundesliga','Austrian Bundesliga','Credit Suisse Super League','Swiss Super League','Major League Soccer','MLS','Liga BBVA MX','Campeonato Brasileiro Série A Assaí','Campeonato Brasileiro Serie A','Liga Profesional de Fútbol','Liga Profesional de Futbol','Saudi Pro League','J-League 1','J League 1','Hana 1Q K League 1','K League 1','Sky Bet Championship','EFL Championship']);
+addLeagueTier(0.75, ['LaLiga Hypermotion','Ligue 2 BKT','Ligue 2','Serie BKT','Serie B','2. Bundesliga','Sky Bet League One','Keuken Kampioen Divisie','Liga Portugal SABSEG','Liga BBVA Expansión MX','Liga BBVA Expansion MX','United Soccer League Championship','Campeonato Brasileiro Série B Betano','Campeonato Brasileiro Serie B','Liga 1 Te Apuesto','Primera Nacional','Primera División de Venezuela','Primera Division de Venezuela','Primera División de Bolivia','Primera Division de Bolivia','Campeonato Nacional Ascenso Betsson','LigaPro Bet593 Serie B','J-League 2','Hana 1Q K League 2','Thai League 2','CFA China League One','Iranian Azadegan League']);
+addLeagueTier(0.60, ['Primera Federación','Primera Federacion','Primera RFEF','Sky Bet League One','3. Liga','Liga 3','Campeonato Brasileiro Série C','Campeonato Brasileiro Serie C','Torneo BetPlay DIMAYOR','Campeonato Nacional Betsson Ascenso','National League','Championnat National','National 1']);
+addLeagueTier(0.45, ['Segunda Federación','Segunda Federacion','Segunda RFEF','Sky Bet League Two','League Two','Campeonato Brasileiro Série D','Campeonato Brasileiro Serie D','Cuarta División','Cuarta Division','Liga 4','Serie D']);
+addLeagueTier(0.35, ['Tercera Federación','Tercera Federacion','Tercera RFEF','National League North','National League South','Northern Premier League','Isthmian League','Southern League','Quinta División','Quinta Division','Liga 5']);
+addLeagueTier(0.25, ['División de Honor Juvenil','Division de Honor Juvenil','Primera División Juvenil','Primera Division Juvenil','U19 National League','U19 League','U19 Division']);
+addLeagueTier(0.15, ['U18 League','U17 League','U16 League','U18 Division','U17 Division','U16 Division']);
+function leagueTier(div){
+  const d = norm(div);
+  if (!d) return null;
+  if (LEAGUE_TIER_EXACT.has(d)) return LEAGUE_TIER_EXACT.get(d);
+  // Spanish pyramid: explicit levels take precedence over generic division-name rules.
+  if (/^(la ?liga|laliga)(?: ea sports)?$/.test(d)) return 1;
+  if (/^(la ?liga ?2|laliga ?hypermotion|segunda division|segunda division espana)$/.test(d)) return 0.78;
+  if (/primera federacion|primera rfef/.test(d)) return 0.60;
+  if (/segunda federacion|segunda rfef/.test(d)) return 0.45;
+  if (/tercera federacion|tercera rfef/.test(d)) return 0.35;
+  if (/division de honor juvenil|juvenil nacional|juvenil division de honor/.test(d)) return 0.25;
+  if (/juvenil|youth|academy|u ?19|u ?20|u ?21/.test(d)) return 0.25;
+  if (/u ?16|u ?17|youth lower|junior lower/.test(d)) return 0.15;
+  // Clear tier markers only. Ambiguous competitions are deliberately left unclassified.
+  if (/sky bet league one|\\b3\\.? liga\\b|\\bliga 3\\b|\\bserie c\\b|\\bnational league\\b|\\bnational 1\\b|\\bthird division\\b|\\bdivision 3\\b/.test(d)) return 0.60;
+  if (/sky bet league two|\\b4\\.? liga\\b|\\bliga 4\\b|\\bserie d\\b|\\bfourth division\\b|\\bdivision 4\\b/.test(d)) return 0.45;
+  if (/\\b5\\.? liga\\b|\\bliga 5\\b|\\bfifth division\\b|\\bdivision 5\\b|national league north|national league south/.test(d)) return 0.35;
+  if (/\\bchampionship\\b|\\bsecond division\\b|\\bdivision 2\\b|\\bserie b\\b|\\bliga 2\\b|\\b2\\. bundesliga\\b|\\bligue 2\\b/.test(d)) return 0.75;
+  if (/\\bfirst division\\b|\\bdivision 1\\b|\\bprimera division\\b|\\bserie a\\b|\\bprimeira liga\\b|\\bsuper league\\b|\\bpremier league\\b/.test(d)) return 0.75;
+  return null;
+}
+function tierText(value){ return value == null ? 'Unclassified' : (LEAGUE_TIER_LABELS[value] || 'Mapped tier'); }
+function adjSig(){ return $('adj').checked ? norm(S.save && S.save.myLeague) + '|' + JSON.stringify(S.save && S.save.leagueFactors || {}) : '0'; }
 function defaultLeagueFactor(div){
-  const rep = REP.get(norm(div)), mine = myStars();
-  if (!rep || mine == null) return 1;
-  const st = Math.round((rep.stars - mine) / 0.5);
-  const r = Math.max(0, Math.min(30, num($('adjrate').value) || 0)) / 100;
-  return Math.pow(1 + r, st);
+  const their = leagueTier(div), mine = leagueTier(S.save && S.save.myLeague);
+  if (their == null || mine == null || mine <= 0) return null;
+  return Math.max(0.25, Math.min(3, their / mine));
 }
 function leagueFactor(div){
   const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(div)];
   return custom != null && isFinite(+custom) ? Math.max(0.25, Math.min(3, +custom)) : defaultLeagueFactor(div);
 }
-function factor(p){ return !$('adj').checked ? 1 : leagueFactor(p.div); }
+function factor(p){ if (!$('adj').checked) return 1; const f = leagueFactor(p.div); return f == null ? 1 : f; }
 function statVal(p, key){ const v = p.s[key]; if (v == null) return null; return ADJUSTABLE.has(key) ? v * factor(p) : v; }
 const pctCache = new Map(); const scoreCache = new Map(); const GP = new Map(), IDXC = new Map();
 function clearCaches(){ PHC.clear(); XIC.clear(); DOFC.clear(); pctCache.clear(); scoreCache.clear(); POOLC.clear(); GP.clear(); IDXC.clear(); if (typeof PRC !== 'undefined') PRC.clear(); }
@@ -3074,7 +3114,7 @@ $('conds').addEventListener('input', e => { const row = e.target.closest('.cond'
 $('conds').addEventListener('change', e => { const row = e.target.closest('.cond'); if (row && e.target.tagName === 'SELECT'){ S.conds[+row.dataset.i][e.target.dataset.k] = e.target.value; renderConds(); render(); } });
 $('conds').addEventListener('click', e => { if (!e.target.closest('[data-del]')) return; const row = e.target.closest('.cond'); S.conds.splice(+row.dataset.i, 1); renderConds(); render(); });
 
-const FILTER_IDS = ['mins','agemin','agemax','maxval','maxwage','contract','height','foot','rating','hg','nat','minscore','level','posonly','adj','adjrate','versat','vfm','nfs','shrink'];
+const FILTER_IDS = ['mins','agemin','agemax','maxval','maxwage','contract','height','foot','rating','hg','nat','minscore','level','posonly','adj','versat','vfm','nfs','shrink'];
 const FILTER_DEF = {versat:'', vfm:'', nfs:false, shrink:false};
 function captureSearch(){ const f = {role:S.role, x:S.x, y:S.y, leagues:[...S.leagues], conds:S.conds, mode:EX.mode === 'profile' ? 'profile' : 'role', ps: EX.mode === 'profile' ? JSON.parse(JSON.stringify({st:PS.st, role:PS.role, sel:PS.sel, balanced:PS.balanced})) : null};
   FILTER_IDS.forEach(id => { const el = $(id); f[id] = el.type === 'checkbox' ? el.checked : el.value; }); if (roleById[S.role]) f.posx = posExtras(roleById[S.role]).slice(); return f; }
@@ -3115,7 +3155,7 @@ function renderRole(){
   const pool = S.season.players.filter(p => p.club !== myClub && has(p) && passFilters(p, r, f));
   squad = myClub ? S.season.players.filter(p => p.club === myClub && has(p) && (!f.minM || p.mins >= f.minM) && (!f.posOnly || posOK(p, r, posExtras(r)))) : [];
   const adjOn = $('adj').checked;
-  $('adjnote').hidden = !adjOn; if (adjOn) $('adjnote').textContent = `Adjusted view: attacking output scaled ${num($('adjrate').value)||0}% per half-star relative to ${S.save.myLeague || 'your league'}. Role scores and percentiles use the adjusted values.`;
+  $('adjnote').hidden = !adjOn; if (adjOn) $('adjnote').textContent = `Adjusted view: per-90 volume statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}. Unknown competitions remain raw; check League Intelligence for unmapped competitions. Role scores and percentiles use adjusted values where a tier is mapped.`;
   const W = Math.max(300, els.chart.clientWidth), H = Math.round(Math.max(340, Math.min(600, W*0.56)));
   renderCmpBar();
   if (pool.length < 3){ current = []; $('count').textContent = `${pool.length} player${pool.length===1?'':'s'} match.`;
@@ -3209,7 +3249,7 @@ $('ysel').addEventListener('change', () => { S.y = $('ysel').value; render(); })
 $('reset').addEventListener('click', () => applyRole(S.role));
 ['mins','agemin','agemax','maxval','maxwage','rating','minscore','nat'].forEach(id => $(id).addEventListener('input', render));
 ['contract','height','foot','hg','level','posonly'].forEach(id => $(id).addEventListener('change', render));
-['adj','adjrate'].forEach(id => $(id).addEventListener(id === 'adj' ? 'change' : 'input', () => { clearCaches(); renderTab(); }));
+$('adj').addEventListener('change', () => { clearCaches(); renderTab(); });
 let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if (S.tab === 'explore') render(); }, 90); }).observe(els.chart);
 
 /* ---------------- Comparison ---------------- */
@@ -3677,7 +3717,7 @@ function renderScatter(){
   if (SC.box){ const b = SC.box; g += `<rect x="${sx(b.x0)}" y="${sy(b.y1)}" width="${sx(b.x1) - sx(b.x0)}" height="${sy(b.y0) - sy(b.y1)}" fill="rgba(255,255,255,.05)" stroke="rgba(236,237,239,.55)" stroke-dasharray="5 4" stroke-width="1.2" pointer-events="none"/><text x="${sx(b.x1) - 8}" y="${sy(b.y1) + 17}" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink)" pointer-events="none">${SC.sel.size} selected</text>`; }
   g += `<rect id="sc-drag" fill="rgba(255,255,255,.06)" stroke="rgba(236,237,239,.6)" stroke-dasharray="5 4" visibility="hidden" pointer-events="none"/><circle id="sc-hl" r="10" fill="none" stroke="var(--ink)" stroke-width="2" visibility="hidden" pointer-events="none"/>`;
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(axisLabel(SC.x) + ' against ' + axisLabel(SC.y) + ', ' + pts.length + ' players')}">${g}</svg><div class="tip" id="sctip"></div>`;
-  $('scat-foot').textContent = `${adjOn ? `Eligible statistics are adjusted to ${S.save.myLeague || 'your league'} level (${num($('adjrate').value) || 0}% per half-star of league strength); hover to see raw values. ` : 'Raw values are shown. '}Percentile and role scores are position-aware. The minimum-minutes filter is ${SC.minM.toLocaleString()}; dot size still shows each player’s actual minutes. Players without both selected values are excluded, not assigned zero.`;
+  $('scat-foot').textContent = `${adjOn ? `Eligible per-90 statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}; unclassified competitions remain raw. Hover to compare adjusted and raw values. ` : 'Raw values are shown. '}Percentile and role scores are position-aware. The minimum-minutes filter is ${SC.minM.toLocaleString()}; dot size still shows each player’s actual minutes. Players without both selected values are excluded, not assigned zero.`;
   renderScSide();
 }
 function scAdjusted(a){ const [t, id] = splitAx(a); if (t === 'stat') return ADJUSTABLE.has(id); if (t === 'cix'){ const c = customIdx().find(z => z.id === id); return !!(c && c.stats.some(k => ADJUSTABLE.has(k))); } return t === 'role' || t === 'idx'; }
@@ -4014,13 +4054,14 @@ function renderLeagues(){
   });
   const lim = S.season.limited || {};
   const fam = d => [...new Set((lim[d] || []).map(k => ADV_FAMILY[k] || k))];
-  const all = Object.keys(by).map(d => ({d, n:by[d].n, rep:REP.get(norm(d))}));
+  const all = Object.keys(by).map(d => ({d, n:by[d].n, rep:REP.get(norm(d)), tier:leagueTier(d)}));
   const limitedCount = all.filter(l => !!lim[l.d]).length;
-  const unratedCount = all.filter(l => !l.rep).length;
-  $('lgsummary').textContent = `${all.length} leagues · ${S.season.players.length.toLocaleString()} player rows · ${limitedCount} with detected stat gaps · ${unratedCount} without a reference rating`;
-  $('lgrefnote').hidden = ms != null;
-  $('lgrefnote').textContent = ms == null
-    ? 'Your selected league is not matched to the built-in FM24 reputation reference. Automatic factors therefore fall back to 1.00 until the league is matched; manual overrides still work.'
+  const unratedCount = all.filter(l => l.tier == null).length;
+  const homeTier = leagueTier(my);
+  $('lgsummary').textContent = `${all.length} competitions · ${S.season.players.length.toLocaleString()} player rows · ${limitedCount} with detected stat gaps · ${unratedCount} unclassified competitions`;
+  $('lgrefnote').hidden = homeTier != null;
+  $('lgrefnote').textContent = homeTier == null
+    ? 'Your selected home league is not mapped to the saved tier framework. Automatic cross-league adjustment is unavailable until the home league is mapped; unclassified competitions remain raw. You can still set explicit manual multipliers.'
     : '';
   const limL = Object.keys(lim).sort((a, b) => ((REP.get(norm(b)) || {stars:0}).stars - (REP.get(norm(a)) || {stars:0}).stars) || a.localeCompare(b));
   $('lgnote').hidden = !limL.length;
@@ -4032,27 +4073,28 @@ function renderLeagues(){
     if (q && !norm(l.d).includes(q)) return false;
     if (filter === 'limited' && !lim[l.d]) return false;
     if (filter === 'clear' && lim[l.d]) return false;
-    if (filter === 'rated' && !l.rep) return false;
-    if (filter === 'unrated' && l.rep) return false;
+    if (filter === 'rated' && l.tier == null) return false;
+    if (filter === 'unrated' && l.tier != null) return false;
     return true;
   });
   list.sort((a,b) => {
     if (sort === 'name') return a.d.localeCompare(b.d);
     if (sort === 'players') return b.n - a.n || a.d.localeCompare(b.d);
-    return ((b.rep ? b.rep.stars : -1) - (a.rep ? a.rep.stars : -1)) || b.n - a.n || a.d.localeCompare(b.d);
+    return ((b.tier == null ? -1 : b.tier) - (a.tier == null ? -1 : a.tier)) || b.n - a.n || a.d.localeCompare(b.d);
   });
   $('lgbody').innerHTML = list.map(l => {
-    const st = (l.rep && ms != null) ? Math.round((l.rep.stars - ms)/0.5) : null;
     const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(l.d)];
     const automatic = defaultLeagueFactor(l.d);
+    const relative = l.tier != null && homeTier != null ? (l.tier === homeTier ? 'Home-equivalent' : (l.tier > homeTier ? 'Stronger' : 'Weaker')) : 'Unclassified';
     const groups = fam(l.d);
     const coverage = lim[l.d]
       ? `<span class="limtag" title="Missing groups: ${esc(groups.join(', '))}">${warn_icon()}Limited · ${groups.length} groups</span>`
       : '<span class="pclub">No detected gaps</span>';
-    const note = !l.rep ? 'No reference match; automatic factor is 1.00.' : (ms == null ? 'Your league is not matched; automatic factor is 1.00.' : '');
-    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.rep?starsTxt(l.rep.stars):'–'}<div class="pclub">${l.rep?`${esc(l.rep.region)}, ${ordinal(l.rep.rank)} in reference`:'Not listed'}</div></td><td>${l.d===my?'<span class="lvl">Your league</span>':bandHtml(st)}</td><td class="num">${l.n.toLocaleString()}</td><td>${coverage}</td><td class="num" title="Reputation-based heuristic; not a calibrated transfer prediction">${automatic.toFixed(2)}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Manual multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="Auto" title="Automatic: ${automatic.toFixed(2)}. Enter 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"><div class="pclub">${esc(note)}</div></td></tr>`;
+    const note = custom != null ? 'Manual relative multiplier.' : (automatic == null ? 'Unmapped: adjusted view keeps raw statistics.' : 'Automatic tier mapping.');
+    const autoText = automatic == null ? '—' : automatic.toFixed(2);
+    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.tier == null ? '<span class="lvl b-2">Unclassified</span>' : esc(tierText(l.tier))}<div class="pclub">${l.rep ? `FM24 reference: ${starsTxt(l.rep.stars)}` : 'No separate reputation reference'}</div></td><td>${esc(relative)}</td><td class="num">${l.n.toLocaleString()}</td><td>${coverage}</td><td class="num" title="Tier multiplier relative to your selected home league; blank means no automatic mapping.">${autoText}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Manual relative multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="Auto" title="Automatic: ${autoText}. Enter a relative multiplier from 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"><div class="pclub">${esc(note)}</div></td></tr>`;
   }).join('');
-  if (!list.length) $('lgbody').innerHTML = '<tr><td colspan="7" class="hint">No leagues match these filters.</td></tr>';
+  if (!list.length) $('lgbody').innerHTML = '<tr><td colspan="7" class="hint">No competitions match these filters.</td></tr>';
 }
 $('lgsearch').addEventListener('input', renderLeagues);
 $('lgfilter').addEventListener('change', renderLeagues);
@@ -4140,8 +4182,8 @@ function shortLeague(n){ const s = String(n || ''); if (LEAGUE_SHORT[s]) return 
 $('adjpill').addEventListener('click', e => { if (e.target.closest('#adjpop')) return; const p = $('adjpop'); p.hidden = !p.hidden; $('adjpill').setAttribute('aria-expanded', String(!p.hidden)); });
 $('adjpill').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === $('adjpill')){ e.preventDefault(); $('adjpill').click(); } if (e.key === 'Escape'){ $('adjpop').hidden = true; } });
 document.addEventListener('click', e => { if (!e.target.closest('#adjpill')){ $('adjpop').hidden = true; $('adjpill').setAttribute('aria-expanded', 'false'); } });
-try { const a = JSON.parse(localStorage.getItem('rlabp-adj') || 'null'); if (a){ $('adj').checked = !!a.on; if (a.rate != null) $('adjrate').value = a.rate; } } catch(e){}
-['adj','adjrate'].forEach(id => $(id).addEventListener(id === 'adj' ? 'change' : 'input', () => { try { localStorage.setItem('rlabp-adj', JSON.stringify({on:$('adj').checked, rate:$('adjrate').value})); } catch(e){} adjPill(); }));
+try { const a = JSON.parse(localStorage.getItem('rlabp-adj') || 'null'); if (a) $('adj').checked = !!a.on; } catch(e){}
+$('adj').addEventListener('change', () => { try { localStorage.setItem('rlabp-adj', JSON.stringify({on:$('adj').checked})); } catch(e){} adjPill(); clearCaches(); renderTab(); });
 adjPill();
 
 document.addEventListener('click', e => { const b = e.target.closest('[data-explore]'); if (!b || !S.season) return; applyRole(b.dataset.explore); setTab('explore'); });
