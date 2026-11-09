@@ -4211,8 +4211,8 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-expl
 /* ---------------- Library ---------------- */
 async function persist(){ try { await Store.putSave(PV.on ? Object.assign({}, S.save, {myClub:PV.club0, myLeague:PV.league0, dof:PV.dof0}) : S.save); } catch(e){ console.error(e); toast('Could not save changes: ' + (e.code || e.message)); } }
 function storeBadge(){ const el = $('store'); el.className = 'store ' + (Store.kind === 'cloud' ? 'on' : Store.kind === 'local' ? 'local' : '');
-  el.querySelector('span').textContent = Store.kind === 'local' ? 'Saved on this device' : 'Not stored';
-  el.title = Store.kind === 'local' ? 'Everything is kept in this browser on this device. Download a backup from Settings now and then.' : 'This browser isn\u2019t letting the Lab store anything, so imports last for this session only. A private window is the usual cause.'; }
+  el.querySelector('span').textContent = Store.kind === 'cloud' ? 'Synced to private cloud' : Store.kind === 'local' ? 'Saved on this device' : 'Not stored';
+  el.title = Store.kind === 'cloud' ? 'Your Recruitment Lab data is stored in your private Supabase account. Keep periodic backups.' : Store.kind === 'local' ? 'Everything is kept in this browser on this device. Download a backup from Settings now and then.' : 'This browser isn\u2019t letting the Lab store anything, so imports last for this session only. A private window is the usual cause.'; }
 function seasonsSorted(save){ return (save.seasons || []).slice().sort((a,b) => String(a.label).localeCompare(String(b.label))); }
 function fillSaveSelect(){ $('savesel').innerHTML = S.saves.map(s => `<option value="${s.id}"${S.save && s.id===S.save.id?' selected':''}>${esc(s.name)}</option>`).join('') + '<option value="__new">New save…</option>';
   const ss = S.save ? seasonsSorted(S.save) : []; $('seasonsel').innerHTML = ss.map(x => `<option value="${esc(x.label)}"${S.season && x.label===S.season.label?' selected':''}>${esc(x.label)}${progOf(x) < 1 ? ' (' + PROG_SHORT[progOf(x)] + ')' : ''}</option>`).join('') || '<option>No seasons</option>';
@@ -6937,15 +6937,19 @@ async function rlPreviewMigration(){
   try{
     const q=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',RL_AUTH_USER.id).limit(1);
     if(q.error)throw q.error;
-    if(q.data&&q.data.length){say('This cloud account already contains data. Automatic migration is blocked to prevent overwriting it.');return;}
     const [saves,seasons,meta,docs,files]=await Promise.all([idbAll(db,'saves'),idbAll(db,'seasons'),idbAll(db,'meta'),idbAll(db,'docs'),idbAll(db,'files')]);
     const total=saves.length+seasons.length+docs.length+files.length;
+    if(q.data&&q.data.length){
+      if(total){say('This cloud account already has data, and this device also has local data. To prevent overwriting or mixing two libraries, connection is blocked. Your local data is unchanged.');return;}
+      if(!confirm('This cloud account already has a Recruitment Lab library. This device has no local save data. Connect this device to that existing cloud library? Nothing will be uploaded or deleted.')){say('Connection cancelled.');return;}
+      localStorage.setItem('rl-cloud-enabled','1');say('Connecting this device to the existing cloud library…');setTimeout(()=>location.reload(),700);return;
+    }
     if(!total){say('No local Recruitment Lab data was found to migrate.');return;}
     const summary='Found '+saves.length+' save(s), '+seasons.length+' season data file(s), '+docs.length+' document(s), '+files.length+' image/file(s), and '+meta.length+' metadata record(s). Copy this data to your signed-in cloud account? Local data will be kept unchanged.';
     if(!confirm(summary)) {say('Migration cancelled. Local data is unchanged.');return;}
     say('Copying files and season data. Keep this page open…');
-    const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map();
-    const upload=async(path,blob,type)=>{const x=await bucket.upload(path,blob,{contentType:type||blob.type||'application/octet-stream',upsert:false});if(x.error)throw x.error;return {assetPath:path};};
+    const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map(), uploadedPaths=[], insertedIds=[];
+    const upload=async(path,blob,type)=>{const x=await bucket.upload(path,blob,{contentType:type||blob.type||'application/octet-stream',upsert:false});if(x.error)throw x.error;uploadedPaths.push(path);return {assetPath:path};};
     for(const x of seasons){const path=uid+'/seasons/mig_'+x.id+'.json';const ref=await upload(path,new Blob([x.text],{type:'application/json'}),'application/json');refMap.set(x.id,ref);}
     for(const x of files){const path=uid+'/files/mig_'+x.id;const ref=await upload(path,x.blob,x.blob.type);refMap.set(x.id,ref);}
     const remap=(v)=>{if(Array.isArray(v))return v.map(remap);if(v&&typeof v==='object'){if(typeof v.localId==='string'&&refMap.has(v.localId))return refMap.get(v.localId);const o={};for(const [k,z] of Object.entries(v))o[k]=remap(z);return o;}return v;};
@@ -6953,14 +6957,19 @@ async function rlPreviewMigration(){
     for(const x of saves)rows.push({user_id:uid,id:'save:'+x.id,data:remap(Object.fromEntries(Object.entries(x).filter(([k])=>k!=='id')))});
     for(const x of docs)rows.push({user_id:uid,id:'doc:'+x.id,data:remap(x.data)});
     for(const x of meta)rows.push({user_id:uid,id:'meta',data:x});
-    for(let i=0;i<rows.length;i+=100){const batch=rows.slice(i,i+100);const w=await RL_SUPABASE.from('rl_documents').insert(batch);if(w.error)throw w.error;}
+    for(let i=0;i<rows.length;i+=100){const batch=rows.slice(i,i+100);const w=await RL_SUPABASE.from('rl_documents').insert(batch);if(w.error)throw w.error;insertedIds.push(...batch.map(x=>x.id));}
     const verify=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',uid);
     if(verify.error)throw verify.error;
     if((verify.data||[]).length!==rows.length)throw new Error('Verification count did not match the copied records. Do not delete local data; contact support before retrying.');
     localStorage.setItem('rl-cloud-enabled','1');
     say('Migration verified: '+rows.length+' database records copied. Your original local data remains intact. Reloading into cloud mode…');
     setTimeout(()=>location.reload(),900);
-  }catch(e){console.error('Cloud migration failed',e);say('Migration stopped: '+(e.message||'unknown error')+'. Local data has not been deleted. If any cloud files were uploaded, they are harmless unused copies; do not retry until we inspect the account.');}
+  }catch(e){
+    console.error('Cloud migration failed',e);
+    try{if(typeof insertedIds!=='undefined'&&insertedIds.length){const d=await RL_SUPABASE.from('rl_documents').delete().eq('user_id',RL_AUTH_USER.id).in('id',insertedIds);if(d.error)console.warn('Migration row rollback incomplete',d.error);}}catch(cleanErr){console.warn('Migration row rollback failed',cleanErr);}
+    try{if(typeof uploadedPaths!=='undefined'&&uploadedPaths.length){const d=await RL_SUPABASE.storage.from('recruitment-lab-assets').remove(uploadedPaths);if(d.error)console.warn('Migration file rollback incomplete',d.error);}}catch(cleanErr){console.warn('Migration file rollback failed',cleanErr);}
+    say('Migration stopped: '+(e.message||'unknown error')+'. Local data has not been deleted. A rollback was attempted for any cloud copies made by this attempt; if the message persists, stop and ask me before retrying.');
+  }
   finally{btn.disabled=false;}
 }
 async function rlInitSupabase(){
