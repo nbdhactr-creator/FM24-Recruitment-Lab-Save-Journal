@@ -23,6 +23,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0"></script>
 </head>
 <body>
 <style>
@@ -2292,6 +2293,19 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
       <label class="btn sm" for="set-restore" style="display:inline-flex;align-items:center">Load a backup or phone file</label><input id="set-restore" type="file" accept=".json,application/json" hidden>
     </div>
     <p class="hint">Your data is kept in this browser on this device. A backup holds this save’s imports, shortlists, tactics, settings, badge and your philosophy. The phone file is a smaller copy with your two latest seasons: open the Lab on your phone and load it there.</p></div>
+
+    <div class="field" id="rl-cloud-auth">
+      <span class="lab">Private cloud account</span>
+      <p class="hint" id="rl-cloud-state">Checking Supabase connection…</p>
+      <div class="field"><label for="rl-cloud-email">Email</label><input id="rl-cloud-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+      <div class="field"><label for="rl-cloud-password">Password</label><input id="rl-cloud-password" type="password" autocomplete="current-password" minlength="8" placeholder="At least 8 characters"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="btn sm" id="rl-cloud-signin" type="button">Sign in</button>
+        <button class="btn sm ghost" id="rl-cloud-signup" type="button">Create account</button>
+        <button class="btn sm ghost" id="rl-cloud-signout" type="button" hidden>Sign out</button>
+      </div>
+      <p class="hint">Signing in does not upload, replace, or delete any Recruitment Lab data. Cloud sync and the one-time migration will be enabled only after we finish their safeguards.</p>
+    </div>
     <div class="field"><span class="lab">Save</span>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       <button class="btn sm" id="set-setup" type="button">Run the setup again</button>
@@ -6892,12 +6906,77 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTAL
 $('btn-install').onclick = async () => { if (!INSTALL) return; INSTALL.prompt(); try { await INSTALL.userChoice; } catch(e){} INSTALL = null; $('btn-install').hidden = true; };
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && window.top === window){ window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
 
+
+/* ---------- Supabase account foundation; data remains local until migration is explicitly enabled ---------- */
+const RL_SUPABASE_URL = "https://lwktiauolkpgifwydbzb.supabase.co";
+const RL_SUPABASE_ANON_KEY = "sb_publishable_j0ppd20B9U-yCY2wl-cdtA_dZpZQmUd";
+let RL_SUPABASE = null;
+let RL_AUTH_USER = null;
+function rlCloudMessage(message, isError){
+  const el = $('rl-cloud-state'); if (!el) return;
+  el.textContent = message; el.className = 'hint' + (isError ? ' err' : '');
+}
+async function rlInitSupabase(){
+  const signIn = $('rl-cloud-signin'), signUp = $('rl-cloud-signup'), signOut = $('rl-cloud-signout');
+  if (!window.supabase || typeof window.supabase.createClient !== 'function'){
+    rlCloudMessage('Cloud account library could not load. Local storage is still available.', true); return;
+  }
+  try {
+    RL_SUPABASE = window.supabase.createClient(RL_SUPABASE_URL, RL_SUPABASE_ANON_KEY, {
+      auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true}
+    });
+    const {data, error} = await RL_SUPABASE.auth.getSession();
+    if (error) throw error;
+    RL_AUTH_USER = data.session && data.session.user || null;
+    const paint = () => {
+      const logged = !!RL_AUTH_USER;
+      rlCloudMessage(logged ? 'Signed in as ' + RL_AUTH_USER.email + '. Your data is still stored locally; cloud migration is not enabled yet.' : 'Not signed in. Your data remains stored on this device.');
+      if (signIn) signIn.hidden = logged;
+      if (signUp) signUp.hidden = logged;
+      if (signOut) signOut.hidden = !logged;
+      const pw = $('rl-cloud-password'); if (pw) pw.autocomplete = logged ? 'off' : 'current-password';
+    };
+    paint();
+    RL_SUPABASE.auth.onAuthStateChange((_event, session) => {
+      RL_AUTH_USER = session && session.user || null; paint();
+    });
+    signIn.onclick = async () => {
+      const email = $('rl-cloud-email').value.trim(), password = $('rl-cloud-password').value;
+      if (!email || !password) return rlCloudMessage('Enter your email and password.', true);
+      signIn.disabled = true; rlCloudMessage('Signing in…');
+      try { const r = await RL_SUPABASE.auth.signInWithPassword({email,password}); if (r.error) throw r.error; RL_AUTH_USER = r.data.user; paint(); $('rl-cloud-password').value = ''; }
+      catch(e){ rlCloudMessage(e.message || 'Sign-in failed.', true); }
+      finally { signIn.disabled = false; }
+    };
+    signUp.onclick = async () => {
+      const email = $('rl-cloud-email').value.trim(), password = $('rl-cloud-password').value;
+      if (!email || !password) return rlCloudMessage('Enter your email and a password.', true);
+      if (password.length < 8) return rlCloudMessage('Use a password with at least 8 characters.', true);
+      signUp.disabled = true; rlCloudMessage('Creating your account…');
+      try {
+        const r = await RL_SUPABASE.auth.signUp({email,password,options:{emailRedirectTo:location.origin + location.pathname}});
+        if (r.error) throw r.error;
+        RL_AUTH_USER = r.data.user && r.data.session ? r.data.user : null; paint();
+        rlCloudMessage(r.data.session ? 'Account created and signed in. Your data is still local.' : 'Account created. Check your email to confirm the address, then sign in.');
+        $('rl-cloud-password').value = '';
+      } catch(e){ rlCloudMessage(e.message || 'Account creation failed.', true); }
+      finally { signUp.disabled = false; }
+    };
+    signOut.onclick = async () => {
+      signOut.disabled = true;
+      try { const r = await RL_SUPABASE.auth.signOut(); if (r.error) throw r.error; RL_AUTH_USER = null; paint(); }
+      catch(e){ rlCloudMessage(e.message || 'Sign-out failed.', true); }
+      finally { signOut.disabled = false; }
+    };
+  } catch(e){ console.error('Supabase initialization failed', e); rlCloudMessage('Could not connect to Supabase: ' + (e.message || 'unknown error') + '. Local storage is unaffected.', true); }
+}
+
 async function start(){
   libMsg(null); document.querySelectorAll('.view').forEach(v => v.hidden = true); $('onboard').hidden = true;
   $('loading').hidden = false; $('loading').textContent = 'Connecting to your library';
   const slow = setTimeout(() => { $('loading').textContent = 'Still connecting to your library. This can take up to 10 seconds.'; }, 3500);
   S.saves = []; S.save = null; S.season = null; S.seasonCache.clear(); JR.cache.clear(); CK.data.clear(); CK.proc.clear(); MG.doc = null; MG.loading = null;
-  await Store.init(); clearTimeout(slow); storeBadge(); mgr();
+  await Store.init(); clearTimeout(slow); storeBadge(); mgr(); await rlInitSupabase();
   if (Store.kind !== 'cloud' && Store.why) libMsg('reach');
   $('loading').textContent = 'Loading your library';
   try { S.saves = await Store.listSaves(); } catch(e){ console.error(e); S.saves = []; libMsg('read', e && (e.code || e.message)); }
