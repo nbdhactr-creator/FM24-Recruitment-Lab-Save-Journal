@@ -3158,7 +3158,7 @@ function renderRole(){
   const pool = S.season.players.filter(p => p.club !== myClub && has(p) && passFilters(p, r, f));
   squad = myClub ? S.season.players.filter(p => p.club === myClub && has(p) && (!f.minM || p.mins >= f.minM) && (!f.posOnly || posOK(p, r, posExtras(r)))) : [];
   const adjOn = $('adj').checked;
-  $('adjnote').hidden = !adjOn; if (adjOn) $('adjnote').textContent = `Adjusted view: per-90 volume statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}. Unknown competitions remain raw; check League Intelligence for unmapped competitions. Role scores and percentiles use adjusted values where a tier is mapped.`;
+  $('adjnote').hidden = !adjOn; if (adjOn) $('adjnote').textContent = `Adjusted view: per-90 volume statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}. Unclassified competitions are excluded from adjusted per-90 rankings; check League Intelligence for unmapped competitions. Role scores and percentiles use adjusted values where a tier is mapped.`;
   const W = Math.max(300, els.chart.clientWidth), H = Math.round(Math.max(340, Math.min(600, W*0.56)));
   renderCmpBar();
   if (pool.length < 3){ current = []; $('count').textContent = `${pool.length} player${pool.length===1?'':'s'} match.`;
@@ -3720,7 +3720,7 @@ function renderScatter(){
   if (SC.box){ const b = SC.box; g += `<rect x="${sx(b.x0)}" y="${sy(b.y1)}" width="${sx(b.x1) - sx(b.x0)}" height="${sy(b.y0) - sy(b.y1)}" fill="rgba(255,255,255,.05)" stroke="rgba(236,237,239,.55)" stroke-dasharray="5 4" stroke-width="1.2" pointer-events="none"/><text x="${sx(b.x1) - 8}" y="${sy(b.y1) + 17}" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink)" pointer-events="none">${SC.sel.size} selected</text>`; }
   g += `<rect id="sc-drag" fill="rgba(255,255,255,.06)" stroke="rgba(236,237,239,.6)" stroke-dasharray="5 4" visibility="hidden" pointer-events="none"/><circle id="sc-hl" r="10" fill="none" stroke="var(--ink)" stroke-width="2" visibility="hidden" pointer-events="none"/>`;
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(axisLabel(SC.x) + ' against ' + axisLabel(SC.y) + ', ' + pts.length + ' players')}">${g}</svg><div class="tip" id="sctip"></div>`;
-  $('scat-foot').textContent = `${adjOn ? `Eligible per-90 statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}; unclassified competitions remain raw. Hover to compare adjusted and raw values. ` : 'Raw values are shown. '}Percentile and role scores are position-aware. The minimum-minutes filter is ${SC.minM.toLocaleString()}; dot size still shows each player’s actual minutes. Players without both selected values are excluded, not assigned zero.`;
+  $('scat-foot').textContent = `${adjOn ? `Eligible per-90 statistics use the tier multiplier relative to ${S.save.myLeague || 'your league'}; unclassified competitions are excluded from adjusted per-90 rankings. Hover to compare adjusted and raw values. ` : 'Raw values are shown. '}Percentile and role scores are position-aware. The minimum-minutes filter is ${SC.minM.toLocaleString()}; dot size still shows each player’s actual minutes. Players without both selected values are excluded, not assigned zero.`;
   renderScSide();
 }
 function scAdjusted(a){ const [t, id] = splitAx(a); if (t === 'stat') return ADJUSTABLE.has(id); if (t === 'cix'){ const c = customIdx().find(z => z.id === id); return !!(c && c.stats.some(k => ADJUSTABLE.has(k))); } return t === 'role' || t === 'idx'; }
@@ -4064,7 +4064,7 @@ function renderLeagues(){
   $('lgsummary').textContent = `${all.length} competitions · ${S.season.players.length.toLocaleString()} player rows · ${limitedCount} with detected stat gaps · ${unratedCount} unclassified competitions`;
   $('lgrefnote').hidden = homeTier != null;
   $('lgrefnote').textContent = homeTier == null
-    ? 'Your selected home league is not mapped to the saved tier framework. Automatic cross-league adjustment is unavailable until the home league is mapped; unclassified competitions remain raw. You can still set explicit manual multipliers.'
+    ? 'Your selected home league is not mapped to the saved tier framework. Automatic cross-league adjustment is unavailable until the home league is mapped; unclassified competitions are excluded from adjusted per-90 rankings. You can still set explicit manual multipliers.'
     : '';
   const limL = Object.keys(lim).sort((a, b) => ((leagueTier(b) || 0) - (leagueTier(a) || 0)) || a.localeCompare(b));
   $('lgnote').hidden = !limL.length;
