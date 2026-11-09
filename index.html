@@ -1912,8 +1912,8 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
       <div class="grp">
         <div class="grid g3">
           <div class="field"><label for="lgsearch">Find a league</label><input id="lgsearch" type="search" placeholder="Search league name"></div>
-          <div class="field"><label for="lgfilter">Show</label><select id="lgfilter"><option value="all">All leagues</option><option value="limited">Limited-stat leagues</option><option value="clear">No detected league-wide gaps</option><option value="rated">In reputation reference</option><option value="unrated">Not in reputation reference</option></select></div>
-          <div class="field"><label for="lgsort">Sort by</label><select id="lgsort"><option value="rep">Reference reputation</option><option value="players">Player-pool size</option><option value="name">League name</option></select></div>
+          <div class="field"><label for="lgfilter">Show</label><select id="lgfilter"><option value="all">All leagues</option><option value="limited">Limited-stat leagues</option><option value="clear">No detected league-wide gaps</option><option value="rated">Mapped tier</option><option value="unrated">Unclassified tier</option></select></div>
+          <div class="field"><label for="lgsort">Sort by</label><select id="lgsort"><option value="rep">Recruitment tier</option><option value="players">Player-pool size</option><option value="name">League name</option></select></div>
         </div>
         <p class="hint" id="lgsummary" style="margin:8px 0 10px"></p>
         <div class="tablewrap"><table><thead><tr><th>Competition</th><th>Recruitment tier</th><th>Relative tier</th><th class="num">Players</th><th>Data coverage</th><th class="num">Auto multiplier</th><th>Manual override</th></tr></thead><tbody id="lgbody"></tbody></table></div>
@@ -2976,10 +2976,11 @@ const LEAGUE_TIER_EXACT = new Map();
 function addLeagueTier(value, names){ names.forEach(n => LEAGUE_TIER_EXACT.set(norm(n), value)); }
 addLeagueTier(1, ['Premier League','English Premier League','LaLiga','LaLiga EA Sports','La Liga','La Liga EA Sports','Bundesliga','Serie A','Serie A Enilive','Serie A TIM','Ligue 1','Ligue 1 McDonald\'s','Ligue 1 Uber Eats']);
 addLeagueTier(0.85, ['Eredivisie','Liga Portugal Betclic','Primeira Liga','Liga Portugal','Jupiler Pro League','Belgian Pro League','Trendyol Süper Lig','Turkish Super Lig','William Hill Premiership','Scottish Premiership','ADMIRAL Bundesliga','Austrian Bundesliga','Credit Suisse Super League','Swiss Super League','Major League Soccer','MLS','Liga BBVA MX','Campeonato Brasileiro Série A Assaí','Campeonato Brasileiro Serie A','Liga Profesional de Fútbol','Liga Profesional de Futbol','Saudi Pro League','J-League 1','J League 1','Hana 1Q K League 1','K League 1','Sky Bet Championship','EFL Championship']);
-addLeagueTier(0.75, ['LaLiga Hypermotion','Ligue 2 BKT','Ligue 2','Serie BKT','Serie B','2. Bundesliga','Sky Bet League One','Keuken Kampioen Divisie','Liga Portugal SABSEG','Liga BBVA Expansión MX','Liga BBVA Expansion MX','United Soccer League Championship','Campeonato Brasileiro Série B Betano','Campeonato Brasileiro Serie B','Liga 1 Te Apuesto','Primera Nacional','Primera División de Venezuela','Primera Division de Venezuela','Primera División de Bolivia','Primera Division de Bolivia','Campeonato Nacional Ascenso Betsson','LigaPro Bet593 Serie B','J-League 2','Hana 1Q K League 2','Thai League 2','CFA China League One','Iranian Azadegan League']);
+addLeagueTier(0.75, ['Ligue 2 BKT','Ligue 2','Serie BKT','Serie B','2. Bundesliga','Sky Bet League One','Keuken Kampioen Divisie','Liga Portugal SABSEG','Liga BBVA Expansión MX','Liga BBVA Expansion MX','United Soccer League Championship','Campeonato Brasileiro Série B Betano','Campeonato Brasileiro Serie B','Liga 1 Te Apuesto','Primera Nacional','Primera División de Venezuela','Primera Division de Venezuela','Primera División de Bolivia','Primera Division de Bolivia','Campeonato Nacional Ascenso Betsson','LigaPro Bet593 Serie B','J-League 2','Hana 1Q K League 2','Thai League 2','CFA China League One','Iranian Azadegan League']);
 addLeagueTier(0.60, ['Primera Federación','Primera Federacion','Primera RFEF','Sky Bet League One','3. Liga','Liga 3','Campeonato Brasileiro Série C','Campeonato Brasileiro Serie C','Torneo BetPlay DIMAYOR','Campeonato Nacional Betsson Ascenso','National League','Championnat National','National 1']);
 addLeagueTier(0.45, ['Segunda Federación','Segunda Federacion','Segunda RFEF','Sky Bet League Two','League Two','Campeonato Brasileiro Série D','Campeonato Brasileiro Serie D','Cuarta División','Cuarta Division','Liga 4','Serie D']);
 addLeagueTier(0.35, ['Tercera Federación','Tercera Federacion','Tercera RFEF','National League North','National League South','Northern Premier League','Isthmian League','Southern League','Quinta División','Quinta Division','Liga 5']);
+addLeagueTier(0.78, ['LaLiga Hypermotion','La Liga 2','Segunda División']);
 addLeagueTier(0.25, ['División de Honor Juvenil','Division de Honor Juvenil','Primera División Juvenil','Primera Division Juvenil','U19 National League','U19 League','U19 Division']);
 addLeagueTier(0.15, ['U18 League','U17 League','U16 League','U18 Division','U17 Division','U16 Division']);
 function leagueTier(div){
@@ -3006,6 +3007,8 @@ function leagueTier(div){
 function tierText(value){ return value == null ? 'Unclassified' : (LEAGUE_TIER_LABELS[value] || 'Mapped tier'); }
 function adjSig(){ return $('adj').checked ? norm(S.save && S.save.myLeague) + '|' + JSON.stringify(S.save && S.save.leagueFactors || {}) : '0'; }
 function defaultLeagueFactor(div){
+  const home = norm(S.save && S.save.myLeague);
+  if (norm(div) && norm(div) === home) return 1;
   const their = leagueTier(div), mine = leagueTier(S.save && S.save.myLeague);
   if (their == null || mine == null || mine <= 0) return null;
   return Math.max(0.25, Math.min(3, their / mine));
@@ -3014,8 +3017,8 @@ function leagueFactor(div){
   const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(div)];
   return custom != null && isFinite(+custom) ? Math.max(0.25, Math.min(3, +custom)) : defaultLeagueFactor(div);
 }
-function factor(p){ if (!$('adj').checked) return 1; const f = leagueFactor(p.div); return f == null ? 1 : f; }
-function statVal(p, key){ const v = p.s[key]; if (v == null) return null; return ADJUSTABLE.has(key) ? v * factor(p) : v; }
+function factor(p){ if (!$('adj').checked) return 1; return leagueFactor(p.div); }
+function statVal(p, key){ const v = p.s[key]; if (v == null) return null; if (!ADJUSTABLE.has(key)) return v; const f = factor(p); return f == null ? null : v * f; }
 const pctCache = new Map(); const scoreCache = new Map(); const GP = new Map(), IDXC = new Map();
 function clearCaches(){ PHC.clear(); XIC.clear(); DOFC.clear(); pctCache.clear(); scoreCache.clear(); POOLC.clear(); GP.clear(); IDXC.clear(); if (typeof PRC !== 'undefined') PRC.clear(); }
 function inStrata(p, st){ return STRATA[st].slots.some(x => p.slots.has(x)); }
@@ -3498,7 +3501,7 @@ function drawWhere(players, tpl, role, pool){
 const WHERE = {items:[], X:null, Y:null};
 $('cmpsc').addEventListener('pointerover', e => { const el = e.target.closest('[data-w]'); const tip = $('cmptip'); if (!el || !tip) return; const p = WHERE.items[+el.dataset.w]; if (!p) return;
   const r = $('cmpsc').getBoundingClientRect(), b = el.getBoundingClientRect();
-  const raw = k => { const v = statVal(p, k), rv = p.s[k]; return statShow(v, k) + ($('adj').checked && ADJUSTABLE.has(k) && rv != null && Math.abs(rv - v) > 1e-9 ? ` <span class="pclub">raw ${statShow(rv, k)}</span>` : ''); };
+  const raw = k => { const v = statVal(p, k), rv = p.s[k], f = leagueFactor(p.div); return statShow(v, k) + ($('adj').checked && ADJUSTABLE.has(k) && rv != null ? ` <span class="pclub">raw ${statShow(rv, k)} × ${f == null ? 'unmapped' : f.toFixed(2)}</span>` : ''); };
   tip.innerHTML = `<b>${esc(p.name)}</b>${esc(p.club)} · ${esc(p.age)}${isMine(p) ? ' · <span style="color:var(--gold)">My club</span>' : ''}<br>${esc(sLabel(WHERE.X))}: ${raw(WHERE.X)}<br>${esc(sLabel(WHERE.Y))}: ${raw(WHERE.Y)}`;
   tip.style.left = Math.min(Math.max(b.left - r.left + b.width / 2, 120), r.width - 120) + 'px'; tip.style.top = (b.top - r.top) + 'px'; tip.classList.toggle('below', b.top - r.top < 110); tip.classList.add('on'); });
 $('cmpsc').addEventListener('pointerout', e => { if (e.target.closest('[data-w]') && $('cmptip')) $('cmptip').classList.remove('on'); });
@@ -3746,7 +3749,7 @@ function scTip(d, cx, cy){
     if (ax.parts) h += ax.parts.map(q => `<div class="tr sub"><span>${esc(sLabel(q.k))}</span><b>${statShow(q.v, q.k)}${ax.mode === 'pct' && q.pc != null ? ` <em>${ordinal(Math.round(q.pc))} pct</em>` : ''}</b></div>`).join('');
     if (ax.parts && typeof ax.parts[0] === 'string') h = h; return h; };
   const gx = p.s['npG-npxG/90'];
-  let raw = ''; if ($('adj').checked){ const r = [SC.x, SC.y].map(a => { const [t, id] = splitAx(a); return t === 'stat' && ADJUSTABLE.has(id) && p.s[id] != null && Math.abs(p.s[id] - statVal(p, id)) > 1e-9 ? `${statShow(p.s[id], id)} ${scShortAx(a)}` : null; }).filter(Boolean); if (r.length) raw = `<div class="tf">Before league adjustment: ${r.join(' · ')}</div>`; }
+  let raw = ''; if ($('adj').checked){ const r = [SC.x, SC.y].map(a => { const [t, id] = splitAx(a), f = leagueFactor(p.div); return t === 'stat' && ADJUSTABLE.has(id) && p.s[id] != null && f != null ? `raw ${statShow(p.s[id], id)} × ${f.toFixed(2)} = ${statShow(statVal(p, id), id)} ${scShortAx(a)}` : (t === 'stat' && ADJUSTABLE.has(id) && p.s[id] != null ? `unmapped · raw ${statShow(p.s[id], id)} ${scShortAx(a)}` : null); }).filter(Boolean); if (r.length) raw = `<div class="tf">Raw × league multiplier = adjusted: ${r.join(' · ')}</div>`; }
   tip.innerHTML = `<b>${esc(p.name)}</b><div class="tm">${esc(p.club)} · ${esc(shortLeague(p.div))} · ${esc(p.age ?? '–')} · ${Math.round(p.mins || 0).toLocaleString()} mins</div>${line(SC.x, d.ax)}${line(SC.y, d.ay)}${scDiag() && gx != null ? `<div class="tr"><span>Goals above xG /90</span><b class="${gx >= 0.25 ? 'warn' : ''}">${gx > 0 ? '+' : ''}${gx.toFixed(2)}</b></div>` : ''}<div class="tr"><span>${role ? esc(sentence(role.name)) : 'Role'}${best && role && best.r.id !== role.id ? ' · ' + esc(sentence(best.r.name)) : ''}</span><b>${sc ?? '–'}${best && role && best.r.id !== role.id ? ' · ' + best.sc : ''}</b></div><div class="tr"><span>Value</span><b>${esc(valueTxt(p))}</b></div>${raw}<div class="tf">Click to open${d.mine ? ' · my club' : ''}${d.sl ? ' · on your shortlist' : ''}</div>`;
   const host = $('sc-chart'), k = host.clientWidth / SC.scale.W;
   tip.style.left = Math.min(Math.max(cx * k, 150), host.clientWidth - 150) + 'px'; tip.style.top = cy * k + 'px'; tip.classList.toggle('below', cy * k < 230); tip.classList.add('on');
@@ -4183,7 +4186,7 @@ $('adjpill').addEventListener('click', e => { if (e.target.closest('#adjpop')) r
 $('adjpill').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === $('adjpill')){ e.preventDefault(); $('adjpill').click(); } if (e.key === 'Escape'){ $('adjpop').hidden = true; } });
 document.addEventListener('click', e => { if (!e.target.closest('#adjpill')){ $('adjpop').hidden = true; $('adjpill').setAttribute('aria-expanded', 'false'); } });
 try { const a = JSON.parse(localStorage.getItem('rlabp-adj') || 'null'); if (a) $('adj').checked = !!a.on; } catch(e){}
-$('adj').addEventListener('change', () => { try { localStorage.setItem('rlabp-adj', JSON.stringify({on:$('adj').checked})); } catch(e){} adjPill(); clearCaches(); renderTab(); });
+$('adj').addEventListener('change', () => { try { localStorage.setItem('rlabp-adj', JSON.stringify({on:$('adj').checked})); } catch(e){} adjPill(); });
 adjPill();
 
 document.addEventListener('click', e => { const b = e.target.closest('[data-explore]'); if (!b || !S.season) return; applyRole(b.dataset.explore); setTab('explore'); });
