@@ -848,6 +848,7 @@ i.lg{width:10px;height:10px;border-radius:50%;display:inline-block}
 .tgl input:checked + .tr{background:var(--gold)}
 .tgl input:checked + .tr::after{transform:translateX(14px);background:#16130B}
 .tgl input:focus-visible + .tr{outline:2px solid var(--focus);outline-offset:2px}
+.sc-guide{padding:15px 17px;margin-bottom:12px}.sc-guide-top{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap}.sc-guide-top strong{font-size:14px}.sc-guide-top p{margin:4px 0 0;color:var(--ink2);font-size:12.5px}.sc-mode-field{min-width:min(100%,340px);flex:0 1 420px}.sc-guide-notes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:13px}.sc-guide-notes span{padding:9px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--ink2);font-size:11.5px;line-height:1.45}.sc-guide-notes b{display:block;color:var(--ink);margin-bottom:2px}.sc-guide-caution{margin:11px 0 0;color:var(--muted);font-size:11.5px;line-height:1.5}@media(max-width:850px){.sc-guide-notes{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:480px){.sc-guide-notes{grid-template-columns:1fr}}
 .scgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(330px,500px);gap:14px;align-items:start}
 @media (max-width:1250px){.scgrid{grid-template-columns:minmax(0,1fr)}}
 .scplot{padding:12px 14px 12px;min-width:0}
@@ -1807,11 +1808,18 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- SCATTER -->
   <section class="view" id="v-scatter" hidden>
-    <div class="pagehead"><div><h1>Scatter</h1><p>Plot any two measures against each other. Drag a box to select players, click a dot to open one.</p></div></div>
+    <div class="pagehead"><div><h1>Scatter analysis</h1><p>Find players who fit your recruitment plan by comparing performance, tactical fit, age and transfer value. Each dot is one player.</p></div></div>
+    <div class="panel sc-guide">
+      <div class="sc-guide-top"><div><strong>Start with a recruitment question</strong><p>Choose what you are trying to find. The chart and candidate list will update together.</p></div>
+        <div class="field sc-mode-field"><label for="sc-mode">I want to…</label><select id="sc-mode"><option value="value">Find role-fit players at a sensible transfer value</option><option value="young">Find younger players who fit the role</option><option value="attack">Compare attacking threat and finishing</option><option value="custom">Build my own comparison</option></select></div>
+      </div>
+      <div class="sc-guide-notes"><span><b>Median lines</b> split the selected player pool in half on each measure.</span><span><b>Dot size</b> represents minutes played, not ability.</span><span><b>Role score</b> measures tactical suitability for the selected role; it is not a universal player-quality rating.</span><span><b>Transfer value</b> is an estimate, not wages or total deal cost.</span></div>
+      <p class="sc-guide-caution">Use the chart to identify candidates, not to make an automatic signing decision. Check sample size, league strength, contract, wages and the underlying statistics before acting. Missing data is left out, never treated as zero.</p>
+    </div>
     <div class="scctl">
-      <div class="field ax"><label for="sc-x">X axis</label><select id="sc-x"></select></div>
+      <div class="field ax"><label for="sc-x">Compare on X (horizontal)</label><select id="sc-x"></select></div>
       <button class="iconbtn swap" type="button" id="sc-swap" aria-label="Swap axes" title="Swap axes"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 5h9l-2.5-2.5M12 11H3l2.5 2.5"/></svg></button>
-      <div class="field ax"><label for="sc-y">Y axis</label><select id="sc-y"></select></div>
+      <div class="field ax"><label for="sc-y">Compare on Y (vertical)</label><select id="sc-y"></select></div>
       <div class="field"><label for="sc-pos">Position</label><select id="sc-pos"></select></div>
       <div class="field lgf"><span class="lab">Leagues</span><details class="multi" id="sc-lgmulti"><summary id="sc-lgsum">All leagues</summary><div class="mpop"><div class="presets" id="sc-lgpresets"></div><div class="mlist" id="sc-lglist"></div></div></details></div>
       <div class="field sm2"><label for="sc-agemin">Age from</label><input id="sc-agemin" type="number" min="14" max="45" placeholder="Any" inputmode="numeric"></div>
@@ -3515,9 +3523,9 @@ function slPatch(k, patch, soon, kind){ const e = slGet(k, kind); if (!e) return
 function slToggleMsg(n, total, kind){ const nm = LIST_NAME[kind || 'first']; toast(n ? `Added ${n} to your ${nm}` : total ? `Already on your ${nm}` : 'Nothing to add'); }
 
 /* ================= Scatter ================= */
-const SC = {x:'stat:npxG/90', y:'stat:Non-pen G/90', st:'ST', leagues:new Set(), ageMin:null, ageMax:null, minM:900, mine:true, colour:'club', sort:null, sel:new Set(), items:[], box:null, bound:false, range:''};
-try { const o = JSON.parse(localStorage.getItem('rlabp-scatter') || 'null'); if (o){ Object.assign(SC, o, {leagues:new Set(o.leagues || []), sel:new Set()}); } } catch(e){}
-function scSaveLocal(){ try { localStorage.setItem('rlabp-scatter', JSON.stringify({x:SC.x, y:SC.y, st:SC.st, leagues:[...SC.leagues], ageMin:SC.ageMin, ageMax:SC.ageMax, minM:SC.minM, mine:SC.mine, colour:SC.colour, sort:SC.sort})); } catch(e){} }
+const SC = {x:'meta:val', y:'stat:npxG/90', st:'ST', leagues:new Set(), ageMin:null, ageMax:null, minM:900, mine:true, colour:'club', sort:null, mode:'value', modeApplied:false, sel:new Set(), items:[], box:null, bound:false, range:''};
+try { const o = JSON.parse(localStorage.getItem('rlabp-scatter') || 'null'); if (o){ Object.assign(SC, o, {mode:o.mode || 'custom', modeApplied:false, leagues:new Set(o.leagues || []), sel:new Set()}); } } catch(e){}
+function scSaveLocal(){ try { localStorage.setItem('rlabp-scatter', JSON.stringify({x:SC.x, y:SC.y, st:SC.st, mode:SC.mode, leagues:[...SC.leagues], ageMin:SC.ageMin, ageMax:SC.ageMax, minM:SC.minM, mine:SC.mine, colour:SC.colour, sort:SC.sort})); } catch(e){} }
 const META_AX = {age:'Age', val:'Value (€M)', mins:'Minutes'};
 function customIdx(){ return (S.save && Array.isArray(S.save.indices)) ? S.save.indices : []; }
 // Like-for-like per-90 counts are added together; anything mixing units (rates, percentages) is averaged as percentiles
@@ -3581,7 +3589,16 @@ function fillScLeagues(){
   const n = SC.leagues.size, preset = P.slice(1).find(x => { const m = list.filter(x[1]); return m.length === n && m.every(d => SC.leagues.has(d)); });
   $('sc-lgsum').textContent = !n ? 'All leagues' : preset ? preset[0] : n === 1 ? [...SC.leagues][0] : n + ' leagues';
 }
+function applyScatterMode(mode){
+  const role = scSortRole();
+  if (mode === 'value'){ SC.x = 'meta:val'; SC.y = role ? 'role:' + role.id : 'idx:threat'; }
+  else if (mode === 'young'){ SC.x = 'meta:age'; SC.y = role ? 'role:' + role.id : 'idx:threat'; }
+  else if (mode === 'attack'){ SC.x = 'idx:threat'; SC.y = 'idx:finishing'; if (SC.st === 'GK') SC.st = 'ST'; }
+  SC.mode = mode; SC.sel.clear(); SC.box = null; scSaveLocal();
+}
 function fillScatterUI(){
+  if (!SC.modeApplied){ if (SC.mode === 'value' || SC.mode === 'young' || SC.mode === 'attack') applyScatterMode(SC.mode); SC.modeApplied = true; }
+  $('sc-mode').value = SC.mode || 'custom';
   $('sc-pos').innerHTML = '<option value="">All positions</option>' + Object.keys(STRATA).map(k => `<option value="${k}"${k === SC.st ? ' selected' : ''}>${esc(STRATA[k].label)}</option>`).join('');
   $('sc-pos').value = SC.st || '';
   const valid = a => { const [t, id] = splitAx(a); if (t === 'stat') return S.season.usable.includes(id); if (t === 'role') return !!roleById[id] && (!SC.st || roleById[id].strata === SC.st); if (t === 'cix') return customIdx().some(c => c.id === id); if (t === 'idx') return typeof IDX_BY !== 'undefined' && !!IDX_BY[id]; return t === 'meta'; };
@@ -3621,6 +3638,10 @@ function renderScatter(){
   niceTicks(x0, x1, W < 560 ? 4 : 7).forEach(t => { g += `<text x="${sx(t)}" y="${H - M.b + 19}" text-anchor="middle" font-size="11.5" fill="var(--muted)">${axisFmt(SC.x, t)}</text>`; });
   const mx = median(xs), my = median(ys);
   g += `<line x1="${sx(mx)}" x2="${sx(mx)}" y1="${M.t}" y2="${H - M.b}" stroke="rgba(255,255,255,.3)" stroke-dasharray="1.5 3.5"/><line x1="${M.l}" x2="${W - M.r}" y1="${sy(my)}" y2="${sy(my)}" stroke="rgba(255,255,255,.3)" stroke-dasharray="1.5 3.5"/>`;
+  const gxGoodRight = axisDir(SC.x) > 0, gyGoodTop = axisDir(SC.y) > 0;
+  const quadrant = (xGood, yGood) => xGood && yGood ? 'Stronger on both' : xGood ? 'Stronger on X' : yGood ? 'Stronger on Y' : 'Below median on both';
+  const qStyle = 'font-size="11" font-weight="600" fill="var(--muted)" opacity=".78" pointer-events="none"';
+  g += `<text x="${M.l + 9}" y="${M.t + 15}" ${qStyle}>${quadrant(!gxGoodRight, gyGoodTop)}</text><text x="${W - M.r - 9}" y="${M.t + 15}" text-anchor="end" ${qStyle}>${quadrant(gxGoodRight, gyGoodTop)}</text><text x="${M.l + 9}" y="${H - M.b - 9}" ${qStyle}>${quadrant(!gxGoodRight, !gyGoodTop)}</text><text x="${W - M.r - 9}" y="${H - M.b - 9}" text-anchor="end" ${qStyle}>${quadrant(gxGoodRight, !gyGoodTop)}</text>`;
   if (diag){ const a = Math.max(x0, y0), b = Math.min(x1, y1); g += `<line x1="${sx(a)}" y1="${sy(a)}" x2="${sx(b)}" y2="${sy(b)}" stroke="rgba(255,255,255,.42)" stroke-dasharray="6 5" stroke-width="1.3"/>`;
     if (W > 560){ g += `<text x="${M.l + 26}" y="${M.t + 22}" font-size="12" fill="var(--muted)">Above the line: scoring more than his chances deserve.</text><text x="${M.l + 26}" y="${M.t + 38}" font-size="12" fill="var(--muted)">Expect some fall-back.</text><text x="${W - M.r - 26}" y="${H - M.b - 30}" text-anchor="end" font-size="12" fill="var(--muted)">Below the line: good chances, poor finishing.</text><text x="${W - M.r - 26}" y="${H - M.b - 14}" text-anchor="end" font-size="12" fill="var(--muted)">Often a buy-low.</text>`; } }
   g += `<rect x="${M.l}" y="${M.t}" width="${W - M.l - M.r}" height="${H - M.t - M.b}" fill="none" stroke="var(--line)"/>`;
@@ -3656,7 +3677,7 @@ function renderScatter(){
   if (SC.box){ const b = SC.box; g += `<rect x="${sx(b.x0)}" y="${sy(b.y1)}" width="${sx(b.x1) - sx(b.x0)}" height="${sy(b.y0) - sy(b.y1)}" fill="rgba(255,255,255,.05)" stroke="rgba(236,237,239,.55)" stroke-dasharray="5 4" stroke-width="1.2" pointer-events="none"/><text x="${sx(b.x1) - 8}" y="${sy(b.y1) + 17}" text-anchor="end" font-size="12" font-weight="600" fill="var(--ink)" pointer-events="none">${SC.sel.size} selected</text>`; }
   g += `<rect id="sc-drag" fill="rgba(255,255,255,.06)" stroke="rgba(236,237,239,.6)" stroke-dasharray="5 4" visibility="hidden" pointer-events="none"/><circle id="sc-hl" r="10" fill="none" stroke="var(--ink)" stroke-width="2" visibility="hidden" pointer-events="none"/>`;
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(axisLabel(SC.x) + ' against ' + axisLabel(SC.y) + ', ' + pts.length + ' players')}">${g}</svg><div class="tip" id="sctip"></div>`;
-  $('scat-foot').textContent = `${adjOn ? `Attacking numbers adjusted to ${S.save.myLeague || 'your league'} level (${num($('adjrate').value) || 0}% per half-star of league strength). Hover shows raw numbers too. ` : ''}Percentile-based axes rank each player within ${st ? STRATA[st].label.toLowerCase() + 's' : 'his own position'} with ${POOL_MIN}+ minutes.`;
+  $('scat-foot').textContent = `${adjOn ? `Eligible statistics are adjusted to ${S.save.myLeague || 'your league'} level (${num($('adjrate').value) || 0}% per half-star of league strength); hover to see raw values. ` : 'Raw values are shown. '}Percentile and role scores are position-aware. The minimum-minutes filter is ${SC.minM.toLocaleString()}; dot size still shows each player’s actual minutes. Players without both selected values are excluded, not assigned zero.`;
   renderScSide();
 }
 function scAdjusted(a){ const [t, id] = splitAx(a); if (t === 'stat') return ADJUSTABLE.has(id); if (t === 'cix'){ const c = customIdx().find(z => z.id === id); return !!(c && c.stats.some(k => ADJUSTABLE.has(k))); } return t === 'role' || t === 'idx'; }
@@ -3666,8 +3687,8 @@ function renderScSide(){
   const sel = SC.sel.size ? items.filter(d => SC.sel.has(d.p.key)) : null;
   const list = (sel || items.filter(d => !d.mine)).map(d => ({d, sc: role ? roleScore(d.p, role) : null})).sort((a, b) => (b.sc ?? -1) - (a.sc ?? -1));
   const shown = list.slice(0, sel ? 200 : 25);
-  $('sc-sel-h').textContent = sel ? 'Selection' : 'Top of the pool';
-  $('sc-sel-sub').textContent = sel ? `${sel.length} player${sel.length === 1 ? '' : 's'} inside the box${SC.range ? ' · ' + SC.range : ''}` : `Ranked by role score. Drag a box on the chart to select players.`;
+  $('sc-sel-h').textContent = sel ? 'Your selected players' : 'Best role-fit candidates';
+  $('sc-sel-sub').textContent = sel ? `${sel.length} player${sel.length === 1 ? '' : 's'} inside your selected area${SC.range ? ' · ' + SC.range : ''}` : `Ranked by ${role ? sentence(role.name) + ' (' + role.dutyName.toLowerCase() + ') fit' : 'available role score'}. Select a dot or drag a box to inspect candidates.`;
   $('sc-th-sc').textContent = abbr; $('sc-th-x').textContent = scShortAx(SC.x);
   $('sc-list').innerHTML = shown.length ? shown.map(({d, sc}) => { const p = d.p;
     return `<tr data-key="${esc(p.key)}" tabindex="0"${d.mine ? ' class="mine"' : ''}><td><span class="mk ${d.mine ? 'm' : d.sl ? 's' : ''}"${d.ci >= 0 ? ` style="background:${PCOL[d.ci]}"` : ''}></span><span class="pn"><b>${esc(p.name)}</b><small>${esc(p.club)} · ${esc(shortLeague(p.div))}</small></span></td><td class="num">${esc(p.age ?? '–')}</td><td class="num"><span class="sbadge" style="--b:${pctCol(sc)}">${sc ?? '–'}</span></td><td class="num">${axisFmt(SC.x, d.x)}</td><td class="num vv">${esc(valueTxt(p))}</td></tr>`; }).join('')
@@ -3712,9 +3733,10 @@ function bindScatter(){
   host.addEventListener('pointerup', end); host.addEventListener('pointercancel', end);
   host.addEventListener('click', e => { const t = scTarget(e.target); if (t) openScout(t.d.p.key); });
   const ch = (id, fn) => $(id).addEventListener('change', () => { fn(); SC.sel.clear(); SC.box = null; scSaveLocal(); renderScatter(); });
-  ch('sc-pos', () => { SC.st = $('sc-pos').value || null; SC.sort = null; });
-  $('sc-x').addEventListener('change', () => { if ($('sc-x').value === '__new'){ $('sc-x').value = SC.x; openIdxBuilder('x'); return; } SC.x = $('sc-x').value; SC.sel.clear(); SC.box = null; scSaveLocal(); renderScatter(); });
-  $('sc-y').addEventListener('change', () => { if ($('sc-y').value === '__new'){ $('sc-y').value = SC.y; openIdxBuilder('y'); return; } SC.y = $('sc-y').value; SC.sel.clear(); SC.box = null; scSaveLocal(); renderScatter(); });
+  ch('sc-pos', () => { SC.st = $('sc-pos').value || null; SC.sort = null; if (SC.mode !== 'custom') applyScatterMode(SC.mode); });
+  $('sc-mode').addEventListener('change', () => { applyScatterMode($('sc-mode').value); SC.modeApplied = true; renderScatter(); });
+  $('sc-x').addEventListener('change', () => { if ($('sc-x').value === '__new'){ $('sc-x').value = SC.x; openIdxBuilder('x'); return; } SC.x = $('sc-x').value; SC.mode = 'custom'; $('sc-mode').value = 'custom'; SC.sel.clear(); SC.box = null; scSaveLocal(); renderScatter(); });
+  $('sc-y').addEventListener('change', () => { if ($('sc-y').value === '__new'){ $('sc-y').value = SC.y; openIdxBuilder('y'); return; } SC.y = $('sc-y').value; SC.mode = 'custom'; $('sc-mode').value = 'custom'; SC.sel.clear(); SC.box = null; scSaveLocal(); renderScatter(); });
   ch('sc-age', () => { SC.ageMax = num($('sc-age').value); }); ch('sc-agemin', () => { SC.ageMin = num($('sc-agemin').value); });
   ch('sc-mins', () => { SC.minM = num($('sc-mins').value) || 0; }); ch('sc-mine', () => { SC.mine = $('sc-mine').checked; });
   ch('sc-colour', () => { SC.colour = $('sc-colour').value; });
