@@ -2610,7 +2610,14 @@ const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:
     }
     this.versions.set(id,stamp);
   },
-  async _del(id){ const r=await RL_SUPABASE.from('rl_documents').delete().eq('user_id',this.uid).eq('id',id); if(r.error) throw r.error; },
+  async _del(id){
+    const expected=this.versions.get(id);
+    if(!expected)throw new Error('Cloud delete blocked: this record was not loaded on this device. Reload before deleting.');
+    const r=await RL_SUPABASE.from('rl_documents').delete().eq('user_id',this.uid).eq('id',id).eq('updated_at',expected).select('id');
+    if(r.error)throw r.error;
+    if(!r.data||!r.data.length)throw new Error('Cloud conflict: this record changed on another device. Reload before deleting.');
+    this.versions.delete(id);
+  },
   async listSaves(){
     if(this.kind==='cloud'){const r=await RL_SUPABASE.from('rl_documents').select('id,data,updated_at').eq('user_id',this.uid).like('id','save:%');if(r.error)throw r.error;return (r.data||[]).map(x=>{this.versions.set(x.id,x.updated_at);return Object.assign({id:x.id.slice(5)},x.data||{});});}
     if(this.kind==='local')return idbAll(this.idb,'saves'); return [];
@@ -7004,7 +7011,7 @@ async function rlInitSupabase(){
     RL_AUTH_USER = data.session && data.session.user || null;
     const paint = () => {
       const logged = !!RL_AUTH_USER;
-      rlCloudMessage(logged ? 'Signed in as ' + RL_AUTH_USER.email + '. Your data is still stored locally; cloud migration is not enabled yet.' : 'Not signed in. Your data remains stored on this device.');
+      rlCloudMessage(logged ? 'Signed in as ' + RL_AUTH_USER.email + (localStorage.getItem('rl-cloud-enabled')==='1' ? '. This device is connected to your private cloud library.' : '. Your data remains local until you preview and confirm migration.') : 'Not signed in. Your data remains stored on this device.');
       if (signIn) signIn.hidden = logged;
       if (signUp) signUp.hidden = logged;
       if (signOut) signOut.hidden = !logged;
@@ -7038,7 +7045,7 @@ async function rlInitSupabase(){
     };
     signOut.onclick = async () => {
       signOut.disabled = true;
-      try { const r = await RL_SUPABASE.auth.signOut(); if (r.error) throw r.error; RL_AUTH_USER = null; paint(); }
+      try { const r = await RL_SUPABASE.auth.signOut(); if (r.error) throw r.error; RL_AUTH_USER = null; paint(); location.reload(); }
       catch(e){ rlCloudMessage(e.message || 'Sign-out failed.', true); }
       finally { signOut.disabled = false; }
     };
