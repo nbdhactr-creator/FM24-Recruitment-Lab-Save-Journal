@@ -2579,7 +2579,7 @@ const statLabel = k => esc(k) + (isDerived(k) ? '<span class="calc" title="Calcu
 const MEM = new Map();
 const thaw = o => o == null ? o : JSON.parse(JSON.stringify(o));
 const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:null, idb:null,
-  why:'', perms:null, urlCache:new Map(),
+  why:'', perms:null, urlCache:new Map(), versions:new Map(),
   async init(){
     this.why=''; this.kind='none'; this.col=null;
     try { this.idb=this.idb||await openIDB(); this.kind='local'; } catch(e){ this.kind='none'; }
@@ -2594,11 +2594,25 @@ const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:
       if(st.error) throw st.error;
     } catch(e){ this.why=e.message||'Cloud connection failed'; this.kind=this.idb?'local':'none'; console.error('Cloud store unavailable',e); }
   },
-  async _get(id){ const r=await RL_SUPABASE.from('rl_documents').select('data').eq('user_id',this.uid).eq('id',id).maybeSingle(); if(r.error) throw r.error; return r.data?r.data.data:null; },
-  async _put(id,data){ const r=await RL_SUPABASE.from('rl_documents').upsert({user_id:this.uid,id,data,updated_at:new Date().toISOString()},{onConflict:'user_id,id'}); if(r.error) throw r.error; },
+  async _get(id){ const r=await RL_SUPABASE.from('rl_documents').select('data,updated_at').eq('user_id',this.uid).eq('id',id).maybeSingle(); if(r.error) throw r.error; if(!r.data){this.versions.delete(id);return null;}this.versions.set(id,r.data.updated_at);return r.data.data; },
+  async _put(id,data){
+    const expected=this.versions.get(id), stamp=new Date().toISOString();
+    if(expected){
+      const r=await RL_SUPABASE.from('rl_documents').update({data,updated_at:stamp}).eq('user_id',this.uid).eq('id',id).eq('updated_at',expected).select('id');
+      if(r.error)throw r.error;
+      if(!r.data||!r.data.length)throw new Error('Cloud conflict: this record changed on another device. Your change was not uploaded. Reload the Lab to get the latest cloud version, then reapply your edit.');
+    }else{
+      const check=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',this.uid).eq('id',id).maybeSingle();
+      if(check.error)throw check.error;
+      if(check.data)throw new Error('Cloud conflict: this record already exists but was not loaded on this device. Reload before editing.');
+      const r=await RL_SUPABASE.from('rl_documents').insert({user_id:this.uid,id,data,updated_at:stamp});
+      if(r.error)throw r.error;
+    }
+    this.versions.set(id,stamp);
+  },
   async _del(id){ const r=await RL_SUPABASE.from('rl_documents').delete().eq('user_id',this.uid).eq('id',id); if(r.error) throw r.error; },
   async listSaves(){
-    if(this.kind==='cloud'){const r=await RL_SUPABASE.from('rl_documents').select('id,data').eq('user_id',this.uid).like('id','save:%');if(r.error)throw r.error;return (r.data||[]).map(x=>Object.assign({id:x.id.slice(5)},x.data||{}));}
+    if(this.kind==='cloud'){const r=await RL_SUPABASE.from('rl_documents').select('id,data,updated_at').eq('user_id',this.uid).like('id','save:%');if(r.error)throw r.error;return (r.data||[]).map(x=>{this.versions.set(x.id,x.updated_at);return Object.assign({id:x.id.slice(5)},x.data||{});});}
     if(this.kind==='local')return idbAll(this.idb,'saves'); return [];
   },
   async putSave(s){const d=JSON.parse(JSON.stringify(s));delete d.id;if(this.kind==='cloud')return this._put('save:'+s.id,d);if(this.kind==='local')return idbPut(this.idb,'saves',Object.assign({id:s.id},d));},
@@ -6930,6 +6944,7 @@ async function rlCheckCloudSetup(){
 async function rlPreviewMigration(){
   const status=$('rl-cloud-migration-status'), btn=$('rl-cloud-migrate');
   const say=t=>{if(status)status.textContent=t;};
+  let uploadedPaths=[], insertedIds=[];
   if(!RL_SUPABASE||!RL_AUTH_USER){say('Sign in to your private cloud account first.');return;}
   let db=null;try{db=await openIDB();}catch(e){say('Local browser storage could not be opened: '+e.message);return;}
   if(Store.kind==='cloud'||localStorage.getItem('rl-cloud-enabled')==='1'){say('This device is already configured for cloud storage.');return;}
@@ -6948,7 +6963,7 @@ async function rlPreviewMigration(){
     const summary='Found '+saves.length+' save(s), '+seasons.length+' season data file(s), '+docs.length+' document(s), '+files.length+' image/file(s), and '+meta.length+' metadata record(s). Copy this data to your signed-in cloud account? Local data will be kept unchanged.';
     if(!confirm(summary)) {say('Migration cancelled. Local data is unchanged.');return;}
     say('Copying files and season data. Keep this page open…');
-    const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map(), uploadedPaths=[], insertedIds=[];
+    const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map();
     const upload=async(path,blob,type)=>{const x=await bucket.upload(path,blob,{contentType:type||blob.type||'application/octet-stream',upsert:false});if(x.error)throw x.error;uploadedPaths.push(path);return {assetPath:path};};
     for(const x of seasons){const path=uid+'/seasons/mig_'+x.id+'.json';const ref=await upload(path,new Blob([x.text],{type:'application/json'}),'application/json');refMap.set(x.id,ref);}
     for(const x of files){const path=uid+'/files/mig_'+x.id;const ref=await upload(path,x.blob,x.blob.type);refMap.set(x.id,ref);}
