@@ -2303,6 +2303,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <button class="btn sm" id="rl-cloud-signin" type="button">Sign in</button>
         <button class="btn sm ghost" id="rl-cloud-signup" type="button">Create account</button>
         <button class="btn sm ghost" id="rl-cloud-signout" type="button" hidden>Sign out</button>
+        <button class="btn sm ghost" id="rl-cloud-check" type="button">Check cloud setup</button>
       </div>
       <p class="hint">Signing in does not upload, replace, or delete any Recruitment Lab data. Cloud sync and the one-time migration will be enabled only after we finish their safeguards.</p>
     </div>
@@ -6916,8 +6917,30 @@ function rlCloudMessage(message, isError){
   const el = $('rl-cloud-state'); if (!el) return;
   el.textContent = message; el.className = 'hint' + (isError ? ' err' : '');
 }
+async function rlCheckCloudSetup(){
+  const b = $('rl-cloud-check');
+  if (!RL_SUPABASE) return rlCloudMessage('Cloud library is not connected yet. Reload the page and try again.', true);
+  if (!RL_AUTH_USER) return rlCloudMessage('Sign in first. No data will be uploaded by this check.', true);
+  if (b) b.disabled = true;
+  rlCloudMessage('Checking your account, database table and private storage…');
+  try {
+    const u = await RL_SUPABASE.auth.getUser();
+    if (u.error) throw u.error;
+    if (!u.data.user || u.data.user.id !== RL_AUTH_USER.id) throw new Error('Your sign-in session could not be verified.');
+    const db = await RL_SUPABASE.from('rl_documents').select('id').limit(1);
+    if (db.error) throw new Error('Database check: ' + db.error.message);
+    const files = await RL_SUPABASE.storage.from('recruitment-lab-assets').list(RL_AUTH_USER.id, {limit:1});
+    if (files.error) throw new Error('Private storage check: ' + files.error.message);
+    rlCloudMessage('Cloud setup passed: account, rl_documents table and private storage are reachable. No Recruitment Lab data was uploaded, changed or deleted. The app is still using local storage.');
+  } catch(e) {
+    console.error('Supabase setup check failed', e);
+    rlCloudMessage('Cloud setup check failed: ' + (e.message || 'unknown error') + '. Your local data is unaffected.', true);
+  } finally { if (b) b.disabled = false; }
+}
 async function rlInitSupabase(){
   const signIn = $('rl-cloud-signin'), signUp = $('rl-cloud-signup'), signOut = $('rl-cloud-signout');
+  const check = $('rl-cloud-check');
+  if (check) check.onclick = rlCheckCloudSetup;
   if (!window.supabase || typeof window.supabase.createClient !== 'function'){
     rlCloudMessage('Cloud account library could not load. Local storage is still available.', true); return;
   }
