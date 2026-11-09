@@ -2996,11 +2996,11 @@ function leagueTier(div){
   if (/u ?16|u ?17|youth lower|junior lower/.test(d)) return 0.15;
   if (/juvenil|youth|academy|u ?19|u ?20|u ?21/.test(d)) return 0.25;
   // Clear tier markers only. Ambiguous competitions are deliberately left unclassified.
-  if (/national league north|national league south|\\b5\\.? liga\\b|\\bliga 5\\b|\\bfifth division\\b|\\bdivision 5\\b/.test(d)) return 0.35;
-  if (/sky bet league two|\\b4\\.? liga\\b|\\bliga 4\\b|\\bserie d\\b|\\bfourth division\\b|\\bdivision 4\\b/.test(d)) return 0.45;
-  if (/sky bet league one|\\b3\\.? liga\\b|\\bliga 3\\b|\\bserie c\\b|\\bnational league\\b|\\bnational 1\\b|\\bthird division\\b|\\bdivision 3\\b/.test(d)) return 0.60;
-  if (/\\bchampionship\\b|\\bsecond division\\b|\\bdivision 2\\b|\\bserie b\\b|\\bliga 2\\b|\\b2\\. bundesliga\\b|\\bligue 2\\b/.test(d)) return 0.75;
-  if (/\\bfirst division\\b|\\bdivision 1\\b|\\bprimera division\\b|\\bserie a\\b|\\bprimeira liga\\b|\\bsuper league\\b|\\bpremier league\\b/.test(d)) return 0.75;
+  if (/national league north|national league south|\b5\.? liga\b|\bliga 5\b|\bfifth division\b|\bdivision 5\b/.test(d)) return 0.35;
+  if (/sky bet league two|\b4\.? liga\b|\bliga 4\b|\bserie d\b|\bfourth division\b|\bdivision 4\b/.test(d)) return 0.45;
+  if (/sky bet league one|\b3\.? liga\b|\bliga 3\b|\bserie c\b|\bnational league\b|\bnational 1\b|\bthird division\b|\bdivision 3\b/.test(d)) return 0.60;
+  if (/\bchampionship\b|\bsecond division\b|\bdivision 2\b|\bserie b\b|\bliga 2\b|\b2\. bundesliga\b|\bligue 2\b/.test(d)) return 0.75;
+  if (/\bfirst division\b|\bdivision 1\b|\bprimera division\b|\bserie a\b|\bprimeira liga\b|\bsuper league\b|\bpremier league\b/.test(d)) return 0.75;
   return null;
 }
 function tierText(value){ return value == null ? 'Unclassified' : (LEAGUE_TIER_LABELS[value] || 'Mapped tier'); }
