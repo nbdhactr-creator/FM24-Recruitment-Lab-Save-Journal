@@ -2584,6 +2584,18 @@ const idbGet = (d,s,k) => idbTx(d,s,'readonly',st => st.get(k));
 const idbPut = (d,s,v) => idbTx(d,s,'readwrite',st => { st.put(v); return null; });
 const idbDel = (d,s,k) => idbTx(d,s,'readwrite',st => { st.delete(k); return null; });
 
+// Read-only storage diagnostics. Never writes, upgrades, clears, or migrates user data.
+async function inspectLibrary(){
+  const info = {origin: location.origin, kind: Store.kind, reason: Store.why || '', database: null, stores: [], saves: null, seasons: null};
+  if (Store.idb){
+    info.database = Store.idb.name + ' (version ' + Store.idb.version + ')';
+    info.stores = Array.from(Store.idb.objectStoreNames);
+    try { if (info.stores.includes('saves')) info.saves = await idbTx(Store.idb,'saves','readonly',st => st.count()); } catch(e){ info.saves = 'read error: ' + (e.name || e.message); }
+    try { if (info.stores.includes('seasons')) info.seasons = await idbTx(Store.idb,'seasons','readonly',st => st.count()); } catch(e){ info.seasons = 'read error: ' + (e.name || e.message); }
+  }
+  return info;
+}
+
 /* ---------------- Season processing ---------------- */
 function parseExport(html){
   // FM24 HTML is the only supported import format. Keep the source cell strings
@@ -6587,7 +6599,16 @@ async function start(){
   if (Store.kind !== 'cloud' && Store.why) libMsg('reach', Store.why);
   $('loading').textContent = 'Loading your library';
   try { S.saves = await Store.listSaves(); } catch(e){ console.error(e); S.saves = []; libMsg('read', e && (e.code || e.message)); }
-  if (!S.saves.length){ showOnboard(Store.kind === 'local' ? '' : Store.kind === 'none' ? 'Storage is unavailable here, so imports last for this session only.' : ''); fillSaveSelect(); setTab(S.tab); return; }
+  if (!S.saves.length){
+    let note = Store.kind === 'local' ? '' : Store.kind === 'none' ? 'Storage is unavailable here, so imports last for this session only.' : '';
+    try {
+      const d = await inspectLibrary();
+      note += (note ? ' ' : '') + 'Read-only storage check: origin ' + d.origin + '; mode ' + d.kind + '; database ' + (d.database || 'not open') + '; saves ' + (d.saves == null ? 'unavailable' : d.saves) + '; seasons ' + (d.seasons == null ? 'unavailable' : d.seasons) + '.';
+      if (d.reason) note += ' Storage detail: ' + d.reason + '.';
+      if (d.stores.length) note += ' Stores: ' + d.stores.join(', ') + '.';
+    } catch(e){ note += (note ? ' ' : '') + 'Storage diagnostic failed: ' + (e.name || e.message) + '.'; }
+    showOnboard(note); fillSaveSelect(); setTab(S.tab); return;
+  }
   let meta = {}; try { meta = await Store.getMeta(); } catch(e){}
   try { await openSave(meta.active && S.saves.find(s => s.id === meta.active) ? meta.active : S.saves[0].id, meta.season); }
   catch(e){ console.error(e); $('loading').hidden = true; libMsg('read', e && (e.code || e.message)); fillSaveSelect(); setTab(FREE_TABS.has(S.tab) ? S.tab : 'guide'); }
