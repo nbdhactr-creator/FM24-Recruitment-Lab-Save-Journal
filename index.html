@@ -1581,6 +1581,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="leagues" title="Leagues"><svg viewBox="0 0 20 20"><path d="M3 16h14M5 16V9M10 16V5M15 16v-4"/></svg><span class="lbl">Leagues</span></button>
   <button class="ni" type="button" data-tab="bench" title="Benchmarks"><svg viewBox="0 0 20 20"><path d="M4 16V4h9l-1.5 3L13 10H4"/></svg><span class="lbl">Benchmarks</span></button>
   <div class="ng">My club</div>
+  <button class="ni" type="button" data-tab="squad" title="Squad Assessment"><svg viewBox="0 0 20 20"><path d="M3 16.5h14M5 13V7h3v6M12 13V4h3v9"/></svg><span class="lbl">Squad Assessment</span></button>
   <button class="ni" type="button" data-tab="tactic" title="Tactic &amp; best XI"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h3M14 10h3"/><circle cx="10" cy="10" r="2.2"/></svg><span class="lbl">Tactic &amp; best XI</span></button>
   <button class="ni" type="button" data-tab="recruitment" title="Recruitment plan"><svg viewBox="0 0 20 20"><path d="M4 4.5h12M4 10h12M4 15.5h8"/><path d="m2.5 4.5 1 1 1.8-2M2.5 10l1 1 1.8-2"/></svg><span class="lbl">Recruitment plan</span></button>
   <button class="ni" type="button" data-tab="teamcompare" title="Team comparison"><svg viewBox="0 0 20 20"><path d="M3 16V5h5v11M12 16V3h5v13M1.5 16.5h17"/></svg><span class="lbl">Team comparison</span></button>
@@ -4051,9 +4052,9 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
+const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
 const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
-  squad:['My club','Squad stats'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], recruitment:['My club','Recruitment plan'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
+  squad:['My club','Squad Assessment'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], recruitment:['My club','Recruitment plan'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
 function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   const inf = TAB_INFO[t] || ['', t]; $('crumb').innerHTML = `<span class="grp-lbl">${esc(inf[0])}</span><span class="sep">/</span><b>${esc(inf[1])}</b>`;
@@ -4864,12 +4865,106 @@ function kmini(td, extra){
 }
 function minsAge(players){ let a = 0, m = 0; players.forEach(p => { if (p.age != null && p.mins > 0){ a += p.age * p.mins; m += p.mins; } }); return m ? a / m : null; }
 function sqEmptyHtml(){
-  return `<div class="panel"><div class="phead"><h2>Squad stats</h2><p>Every checkpoint, graded against your Blueprint</p></div><div class="grp">
-    <p style="margin:0 0 10px;max-width:72ch;color:var(--ink2)">A checkpoint is one export of your squad screen plus a few Data Hub numbers. Add one every three months or so. Your first, this February, is the baseline from August; each one after it shows that block’s form.</p>
-    <ul class="notes" style="max-width:72ch"><li><strong>Squad screen export.</strong> Use the same view as your world export so the columns match. It keeps everyone, including academy players under the world export’s minutes cut-off.</li><li><strong>World export.</strong> Import it as a season with Import season. It is the pool every percentile and role score is measured against.</li><li><strong>Data Hub.</strong> Played, results, goals, xG for and against, xPTS, possession, PPDA and field tilt. Anything it doesn’t show can stay blank.</li></ul>
-    <div class="row" style="margin-top:12px"><button class="btn primary" type="button" data-sq="add">Add your first checkpoint</button></div></div></div>`;
+  return `<div class="panel"><div class="phead"><h2>Squad Assessment</h2><p>Build an evidence-based view of your squad</p></div><div class="grp">
+    <p style="margin:0 0 10px;max-width:72ch;color:var(--ink2)">Import a season to establish the comparison pool, then add a squad checkpoint for a fuller assessment. You can also start with your club’s players from the current world import.</p>
+    <ul class="notes" style="max-width:72ch"><li><strong>World export:</strong> supplies the comparison population for percentiles and role scores.</li><li><strong>Squad checkpoint:</strong> captures your club’s players, including players below the world export’s minutes cut-off.</li><li><strong>Missing data:</strong> unavailable metrics stay unavailable. They are never treated as zero or as evidence of poor quality.</li></ul>
+    <div class="row" style="margin-top:12px"><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button><button class="btn" type="button" id="sq-import">Import a season</button></div></div></div>`;
 }
-async function renderSquadStats(){}
+function sqSlotGroup(slot){
+  if (slot === 'GK') return 'Goalkeepers';
+  if (/^D-|^WB-/.test(slot)) return 'Defence';
+  if (/^DM/.test(slot)) return 'Defensive midfield';
+  if (/^M-/.test(slot)) return 'Midfield';
+  if (/^AM-/.test(slot)) return 'Attacking midfield';
+  if (/^ST-/.test(slot)) return 'Attack';
+  return 'Other';
+}
+function sqRoleAssessment(players, tac){
+  const slots = FORMATIONS[tac.formation] || [], candidates = players.filter(p => p.mins >= 270);
+  const scores = slots.map(slot => {
+    const role = roleById[tac.roles && tac.roles[slot]];
+    return candidates.map(p => {
+      const eligible = SLOT[slot].need.some(x => p.slots && p.slots.has(x));
+      const sc = eligible && role ? sqScore(p, role, 'all') : null;
+      return sc;
+    });
+  });
+  const BIG = 1000000, n = Math.max(candidates.length, slots.length);
+  const cost = scores.map(row => Array.from({length:n}, (_,j) => j < candidates.length && row[j] != null ? 100-row[j] : BIG));
+  const assigned = cost.length ? hungarian(cost) : [];
+  return slots.map((slot,i) => {
+    const j = assigned[i], p = j >= 0 && j < candidates.length && cost[i][j] < BIG ? candidates[j] : null;
+    const role = roleById[tac.roles && tac.roles[slot]];
+    const ranked = candidates.map((q,k)=>({p:q,sc:scores[i][k]})).filter(x=>x.sc!=null).sort((a,b)=>b.sc-a.sc);
+    return {slot, group:sqSlotGroup(slot), role, player:p, score:p?scores[i][j]:null, depth:ranked.slice(0,3)};
+  });
+}
+function sqRating(items){
+  const v=items.map(x=>x.score).filter(x=>x!=null);
+  return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : null;
+}
+function sqScoreLabel(v){ return v==null ? 'Not enough data' : (v/10).toFixed(1)+'/10'; }
+async function renderSquadStats(){
+  const root=$('sq-root'); if(!root)return;
+  if(!S.save){root.innerHTML=emptySaveHtml('squad');return;}
+  ensureSaveDefaults(S.save);
+  if(!SQ.bound){bindSquad(root);SQ.bound=true;}
+  const s=S.save, all=sortCks(s.checkpoints||[]), seasons=[...new Set([...all.map(c=>c.season),S.season&&S.season.label].filter(Boolean))].sort();
+  if(!SQ.season||!seasons.includes(SQ.season)) SQ.season=s.currentSeason||seasons[seasons.length-1]||'';
+  const cks=all.filter(c=>c.season===SQ.season&&c.ref);
+  let ck=cks.find(c=>c.id===SQ.ckId)||cks[cks.length-1]||null;
+  SQ.ckId=ck?ck.id:null;
+  let view=null,source='';
+  try{
+    if(ck){view=await stdOf(ck,SQ.season);source=ck.label||ck.date||'Squad checkpoint';}
+    else if(S.season&&s.myClub&&S.season.label===SQ.season){
+      const ps=S.season.players.filter(p=>p.club===s.myClub);
+      view={players:ps,byKey:new Map(ps.map(p=>[p.key,p]))};source='Current world import';
+    }
+  }catch(e){
+    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2></div><p class="hint">Couldn’t load this checkpoint: ${esc(e.message||e.code||'Unknown error')}</p><button class="btn" type="button" data-sq="add">Add another checkpoint</button></div>`;return;
+  }
+  if(!view||!view.players||!view.players.length){
+    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}</p></div><div class="grp"><p class="hint">${s.myClub?'No squad rows are available for '+esc(s.myClub)+' in this season. Add a squad checkpoint or check your club setting.':'Set your club in Save settings, then add a squad checkpoint.'}</p><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button></div></div>`;return;
+  }
+  const players=view.players, tac=tacticList()[0], assessment=sqRoleAssessment(players,tac);
+  const groups=['Goalkeepers','Defence','Defensive midfield','Midfield','Attacking midfield','Attack'];
+  const groupData=groups.map(name=>{const a=assessment.filter(x=>x.group===name);return {name,items:a,rating:sqRating(a),covered:a.filter(x=>x.score!=null).length,total:a.length,depth:a.reduce((n,x)=>n+x.depth.length,0)};}).filter(x=>x.total);
+  const rated=assessment.filter(x=>x.score!=null), overall=sqRating(assessment);
+  const measured=assessment.filter(x=>x.score!=null).length, pct=assessment.length?Math.round(measured/assessment.length*100):0;
+  const avgAge=minsAge(players), ageCounts={'U21':0,'21–24':0,'25–28':0,'29+':0,'Unknown':0};
+  players.forEach(p=>{if(p.age==null)ageCounts.Unknown++;else if(p.age<21)ageCounts['U21']++;else if(p.age<25)ageCounts['21–24']++;else if(p.age<29)ageCounts['25–28']++;else ageCounts['29+']++;});
+  const wagePlayers=players.filter(p=>p.wage!=null), wageTotal=wagePlayers.reduce((n,p)=>n+p.wage,0), expiring=players.filter(p=>p.expY!=null&&p.expY>=0&&p.expY<=1).length;
+  const options=seasons.map(x=>`<option value="${esc(x)}"${x===SQ.season?' selected':''}>${esc(x)}</option>`).join('');
+  const ckOptions=cks.map(x=>`<option value="${esc(x.id)}"${ck&&x.id===ck.id?' selected':''}>${esc(x.label||x.date||x.id)}</option>`).join('');
+  const groupCards=groupData.map(g=>`<div class="kpi"><div class="k"><span>${esc(g.name)}</span><span>${g.covered}/${g.total} roles scored</span></div><div class="v">${g.rating==null?'—':(g.rating/10).toFixed(1)+'/10'}</div><div class="s">${g.covered===g.total?'All tactical slots measured':g.covered?'Partial role coverage':'No measurable role scores'}</div></div>`).join('');
+  const roleRows=assessment.map(x=>`<tr><td><b>${esc(SLOT_LABEL[x.slot]||x.slot)}</b><div class="pclub">${esc(x.role?roleTitle(x.role):'No role assigned')}</div></td><td><span class="pname">${esc(x.player?x.player.name:'No measured starter')}</span>${x.player?`<div class="pclub">${esc(x.player.pos||'')} · ${Math.round(x.player.mins||0).toLocaleString()} mins</div>`:''}</td><td class="num">${x.score==null?'—':x.score}</td><td>${x.depth.slice(1,3).map(d=>`<div>${esc(d.p.name)} <span class="pclub">${d.sc}</span></div>`).join('')||'<span class="pclub">No scored cover</span>'}</td><td class="num">${x.depth.length}</td></tr>`).join('');
+  root.innerHTML=`<div class="panel">
+    <div class="phead"><div><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}${s.myClub?' · '+esc(s.myClub):''}</p></div><div class="row"><button class="btn primary" type="button" data-sq="add">Add checkpoint</button></div></div>
+    <div class="sq-ctl">
+      <div class="field"><label for="sq-season">Season</label><select id="sq-season">${options}</select></div>
+      <div class="field"><label for="sq-ck">Squad data</label><select id="sq-ck"><option value="">Current world import</option>${ckOptions}</select></div>
+      <div class="field"><label for="sq-scope">Percentile pool</label><select id="sq-scope"><option value="all"${SQ.scope==='all'?' selected':''}>All leagues</option><option value="big5"${SQ.scope==='big5'?' selected':''}>Big five</option><option value="mine"${SQ.scope==='mine'?' selected':''}>Your league</option></select></div>
+      <div class="field"><label>Data source</label><div class="hint" style="padding:10px 0">${esc(source)}</div></div>
+    </div>
+    <div class="grp">
+      <div class="grid g2">
+        <div class="kpi"><div class="k"><span>Squad role-fit index</span><span>${measured}/${assessment.length} slots scored</span></div><div class="v">${overall==null?'—':(overall/10).toFixed(1)+'/10'}</div><div class="s">Mean percentile score of the best unique XI across your selected tactic. Not a club-strength rating.</div></div>
+        <div class="kpi"><div class="k"><span>Squad profile</span><span>${players.length} players</span></div><div class="v">${avgAge==null?'—':avgAge.toFixed(1)+' yrs'}</div><div class="s">Minutes-weighted average age · ${pct}% of tactical slots have a measurable score</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:12px">${groupCards}</div>
+    </div>
+    <div class="grp"><h3>Tactical coverage</h3><p class="hint">Players are assigned uniquely to the selected tactic’s slots. Scores are role percentiles against the chosen comparison pool. A slot without enough measured role data is left ungraded.</p>
+      <div class="tablewrap"><table class="sqtable"><thead><tr><th>Slot / role</th><th>Assigned player</th><th class="num">Role score</th><th>Next options</th><th class="num">Scored depth</th></tr></thead><tbody>${roleRows}</tbody></table></div>
+    </div>
+    <div class="grp"><h3>Age profile</h3><div class="grid g2">${Object.entries(ageCounts).map(([k,v])=>`<div class="kpi"><div class="k"><span>${k}</span><span>${players.length?Math.round(v/players.length*100):0}%</span></div><div class="v">${v}</div></div>`).join('')}</div></div>
+    <div class="grp"><h3>Contract and wage indicators</h3><div class="grid g2">
+      <div class="kpi"><div class="k"><span>Contracts expiring within 12 months</span></div><div class="v">${expiring}</div><div class="s">Only players with a readable contract end date are counted.</div></div>
+      <div class="kpi"><div class="k"><span>Recorded weekly wages</span></div><div class="v">${wagePlayers.length?esc(fmtMoney(wageTotal)):'—'}</div><div class="s">${wagePlayers.length} of ${players.length} players have wage data. This is not a sustainability verdict without a budget or wage cap.</div></div>
+    </div></div>
+    <p class="hint" style="padding:0 18px 16px">Method: role-fit index is the mean of measurable best-XI role percentiles, divided by ten. It is a tactical screening measure, not a prediction of league results. Squad depth counts players with a measurable score, not everyone listed at a position. Comparison percentiles use the selected world-import pool.</p>
+  </div>`;
+}
 function isAcad(s, p){ const o = s.sq.acad[p.key]; if (o === true || o === false) return o; return /club/i.test(p.hg || ''); }
 function bindSquad(root){
   root.addEventListener('click', async e => {
@@ -4882,9 +4977,11 @@ function bindSquad(root){
   });
   root.addEventListener('change', async e => {
     const t = e.target, s = S.save;
+    if (t.id === 'sq-import'){ openImport(false); return; }
     if (t.id === 'sq-season'){ SQ.season = t.value; SQ.ckId = null; renderSquadStats(); return; }
     if (t.id === 'sq-ck'){ SQ.ckId = t.value; renderSquadStats(); return; }
     if (t.id === 'sq-scope'){ SQ.scope = t.value; renderSquadStats(); return; }
+    if (t.id === 'sq-ck'){ SQ.ckId = t.value || null; renderSquadStats(); return; }
     if (t.id === 'sq-nodef'){ setNoDef(t.checked); return; }
     if (t.dataset.lens){ s.sq.lens[t.dataset.lens] = t.value; await persist(); renderSquadStats(); return; }
     if (t.id === 'fit-src'){ const f = s.sq.fit; if (t.value === 'custom' && !f.roles.length) f.roles = fitRoles(s).cols.map(c => c.id); f.src = t.value; await persist(); renderSquadStats(); return; }
