@@ -5772,7 +5772,7 @@ function bindPhilo(root){
 }
 
 /* ================= Director of Football picks (budget and wage cap stored on the save: save.dof) ================= */
-const DOF = {slot:null, role:null, bound:false, t:null, more:false};
+const DOF = {slot:null, role:null, bound:false, t:null, more:false, expanded:{}};
 function dofCfg(){ const s = S.save; if (!s.dof || typeof s.dof !== 'object') s.dof = {}; return s.dof; }
 function dofBudget(){ const v = num(dofCfg().budget); return v != null && v >= 0 ? v : 30; }
 function dofWage(){ const v = num(dofCfg().wage); return v != null && v >= 0 ? v : 30; }
@@ -5899,9 +5899,9 @@ function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.ta
   const res = dofPicks(ctx), c = dofCfg(), role = ctx.role, st = ctx.starter, sn = st ? surname(st.p.name) : 'your starter';
   const rules = {dream: res.dMin ? 'Best score in a stronger league · in budget · won’t refuse' : 'Best score at your level · in budget · won’t refuse', upg:`Beats ${sn} by 10+ · 22–29 · up to half the budget`, val:`Most score per €M · under ${money(res.vCap)} · medium or high confidence`,
     squad:`Rotation level · proven at your level or above · under ${money(res.sCap)}`, pro:'21 or under · ranked against his age group'};
-  const cols = ['dream','upg','val','squad','pro'].map(k => { const cards = res.cols[k];
-    return `<section class="dof-col" aria-label="${esc(DOF_NAME[k])}"><div class="dof-ch"><h2><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${DOF_ICON[k]}"/></svg>${esc(DOF_NAME[k])}</h2><p title="${esc(rules[k])}">${esc(rules[k])}</p></div>
-      ${cards.map(o => dofCard(k, o, ctx, res)).join('') || `<div class="panel dof-card empty"><b style="color:var(--ink2)">Nobody fits</b><span>No one passes this column’s rules and your limits. Try a bigger budget, a higher wage cap or fewer filters.</span></div>`}</section>`; }).join('');
+  const cols = ['dream','upg','val','squad','pro'].map(k => { const allCards = res.cols[k], expanded = !!DOF.expanded[k], cards = expanded ? allCards : allCards.slice(0,10);
+     return `<section class="dof-col" aria-label="${esc(DOF_NAME[k])}"><div class="dof-ch"><h2><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${DOF_ICON[k]}"/></svg>${esc(DOF_NAME[k])}</h2><p title="${esc(rules[k])}">${esc(rules[k])}</p>${allCards.length>10 ? `<button class="linkbtn" type="button" data-dof="expand" data-cat="${k}" style="margin-top:5px">${expanded ? 'Show top 10' : `View all ${allCards.length}`}</button>` : ''}</div>
+       ${cards.map(o => dofCard(k, o, ctx, res)).join('') || `<div class="panel dof-card empty"><b style="color:var(--ink2)">Nobody fits</b><span>No one passes this column’s rules and your limits. Try a bigger budget, a higher wage cap or fewer filters.</span></div>`}</section>`; }).join('');;
   const left = res.left.map(x => `${esc(x.o.p.name)} (${esc(x.o.p.club)}, ${x.o.sc}) — ${esc(x.r.join('; '))}`).join(' · ');
   root.innerHTML = `<div class="rl-ph"><div style="min-width:0"><h1 style="margin:0;font:700 32px/1 var(--display);letter-spacing:.01em">Director of Football recommendations</h1>
       <p style="margin:5px 0 0;color:var(--ink2);font-size:13px">All qualifying candidates for the selected role, organised from realistic dream signings to value, squad options and prospects. Worked out from your data, budget and philosophy.</p></div>
@@ -5943,6 +5943,7 @@ function bindDof(root){
     const cm = e.target.closest('[data-dcmp]'); if (cm){ toggleCmp(playerByKey(cm.dataset.dcmp)); renderDof(); return; }
     const b = e.target.closest('[data-dof]'); if (!b) return; const all = dofAll(), ctx = dofContext();
     if (b.dataset.dof === 'more'){ DOF.more = !DOF.more; renderDof(); return; }
+    if (b.dataset.dof === 'expand'){ const k=b.dataset.cat; DOF.expanded[k]=!DOF.expanded[k]; renderDof(); return; }
     if (b.dataset.dof === 'clear'){ const c = dofCfg(); ['ageMin','ageMax','lvl','conf','contract'].forEach(k => delete c[k]); persist(); renderDof(); return; }
     if (b.dataset.dof === 'cmp'){ const ps = all.filter(x => x.cat !== 'pro').slice(0, 4).map(x => x.o.p); if (!ps.length) return; S.cmp = ps.map(p => p.key); cmpTrim(); persistCmp(); $('cmprole').value = ctx.role.id; S.cmpRoleLocked = true; setTab('compare'); return; }
     if (b.dataset.dof === 'slall'){ const a = await slAdd(all.filter(x => x.cat !== 'pro').map(x => x.o.p)), p = await slAdd(all.filter(x => x.cat === 'pro').map(x => x.o.p), 'pros');
