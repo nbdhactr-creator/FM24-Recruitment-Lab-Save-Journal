@@ -2587,6 +2587,21 @@ const dirOf = k => SMETA[k] ? SMETA[k][1] : (k === 'Poss Lost/90' || k === 'Con/
 const statLabel = k => esc(k) + (isDerived(k) ? '<span class="calc" title="Calculated from your export columns">calc</span>' : '');
 
 /* ---------------- Storage ---------------- */
+const RL_STORAGE_FILE_LIMIT = 49 * 1024 * 1024;
+async function rlPackSeasonBlob(blob){
+  if(typeof CompressionStream === 'function'){
+    const zipped = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    if(zipped.size < blob.size) return {blob:zipped, contentType:'application/gzip', compression:'gzip'};
+  }
+  return {blob, contentType:'application/json', compression:null};
+}
+async function rlUnpackSeasonBlob(blob, compression){
+  if(compression === 'gzip'){
+    if(typeof DecompressionStream !== 'function') throw new Error('This browser cannot decompress this cloud season. Update Safari/Chrome and try again.');
+    return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+  return await blob.text();
+}
 const MEM = new Map();
 const thaw = o => o == null ? o : JSON.parse(JSON.stringify(o));
 const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:null, idb:null,
@@ -2638,11 +2653,25 @@ const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:
   async getMeta(){if(this.kind==='cloud')return (await this._get('meta'))||{};if(this.kind==='local')return (await idbGet(this.idb,'meta','meta'))||{};return {};},
   async setMeta(m){if(this.kind==='cloud')return this._put('meta',m);if(this.kind==='local')return idbPut(this.idb,'meta',Object.assign({id:'meta'},m));},
   async putSeason(obj){
-    if(this.kind==='cloud'){const path=this.uid+'/seasons/'+rid('season');const body=new Blob([JSON.stringify(obj)],{type:'application/json'});const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').upload(path,body,{contentType:'application/json',upsert:false});if(r.error)throw r.error;return {assetPath:path};}
+    if(this.kind==='cloud'){
+      const path=this.uid+'/seasons/'+rid('season');
+      const raw=new Blob([JSON.stringify(obj)],{type:'application/json'});
+      const packed=await rlPackSeasonBlob(raw);
+      if(packed.blob.size>RL_STORAGE_FILE_LIMIT)throw new Error('This season is still '+(packed.blob.size/1048576).toFixed(1)+' MB after compression, above the Supabase Free-plan per-file limit. Nothing was uploaded. We need to split this season into smaller cloud parts.');
+      const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').upload(path,packed.blob,{contentType:packed.contentType,upsert:false});
+      if(r.error)throw r.error;
+      return Object.assign({assetPath:path},packed.compression?{compression:packed.compression}:{});
+    }
     if(this.kind==='local'){const id='season_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await idbPut(this.idb,'seasons',{id,text:JSON.stringify(obj)});return {localId:id};}
     return {mem:obj};
   },
-  async getSeason(ref){if(ref&&ref.mem)return ref.mem;if(ref&&ref.assetPath){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').download(ref.assetPath);if(r.error)throw r.error;return JSON.parse(await r.data.text());}if(ref&&ref.localId){const x=await idbGet(this.idb,'seasons',ref.localId);return x?JSON.parse(x.text):null;}if(ref&&ref.assetId)throw new Error('Legacy cloud asset reference is not supported by this storage adapter.');return null;},
+  async getSeason(ref){
+    if(ref&&ref.mem)return ref.mem;
+    if(ref&&ref.assetPath){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').download(ref.assetPath);if(r.error)throw r.error;return JSON.parse(await rlUnpackSeasonBlob(r.data,ref.compression));}
+    if(ref&&ref.localId){const x=await idbGet(this.idb,'seasons',ref.localId);return x?JSON.parse(x.text):null;}
+    if(ref&&ref.assetId)throw new Error('Legacy cloud asset reference is not supported by this storage adapter.');
+    return null;
+  },
   async delSeason(ref){try{if(ref&&ref.assetPath&&this.kind==='cloud'){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').remove([ref.assetPath]);if(r.error)throw r.error;}if(ref&&ref.localId&&this.idb)await idbDel(this.idb,'seasons',ref.localId);}catch(e){console.warn('Season cleanup failed',e);}},
   async getDoc(id){if(this.kind==='cloud')return this._get('doc:'+id);if(this.kind==='local'){const r=await idbGet(this.idb,'docs',id);return r?r.data:null;}return MEM.has(id)?clone(MEM.get(id)):null;},
   async putDoc(id,data){const c=JSON.parse(JSON.stringify(data));if(this.kind==='cloud')return this._put('doc:'+id,c);if(this.kind==='local')return idbPut(this.idb,'docs',{id,data:c});MEM.set(id,c);},
@@ -7012,7 +7041,7 @@ async function rlPreviewMigration(){
     say('Copying files and season data. Keep this page open…');
     const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map();
     const upload=async(path,blob,type)=>{const x=await bucket.upload(path,blob,{contentType:type||blob.type||'application/octet-stream',upsert:false});if(x.error)throw x.error;uploadedPaths.push(path);return {assetPath:path};};
-    for(const x of seasons){const path=uid+'/seasons/mig_'+x.id+'.json';const ref=await upload(path,new Blob([x.text],{type:'application/json'}),'application/json');refMap.set(x.id,ref);}
+    for(const x of seasons){const path=uid+'/seasons/mig_'+x.id+'.json';const packed=await rlPackSeasonBlob(new Blob([x.text],{type:'application/json'}));if(packed.blob.size>RL_STORAGE_FILE_LIMIT)throw new Error('A local season is still '+(packed.blob.size/1048576).toFixed(1)+' MB after compression, above the Supabase Free-plan per-file limit.');const ref=await upload(path,packed.blob,packed.contentType);if(packed.compression)ref.compression=packed.compression;refMap.set(x.id,ref);}
     for(const x of files){const path=uid+'/files/mig_'+x.id;const ref=await upload(path,x.blob,x.blob.type);refMap.set(x.id,ref);}
     const remap=(v)=>{if(Array.isArray(v))return v.map(remap);if(v&&typeof v==='object'){if(typeof v.localId==='string'&&refMap.has(v.localId))return refMap.get(v.localId);const o={};for(const [k,z] of Object.entries(v))o[k]=remap(z);return o;}return v;};
     const rows=[];
