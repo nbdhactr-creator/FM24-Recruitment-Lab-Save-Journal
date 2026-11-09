@@ -3230,9 +3230,10 @@ function renderSquad(head, sq){
   $('sqbody').innerHTML = sq.sort((a,b) => (roleScore(b.p,r)??-1) - (roleScore(a.p,r)??-1)).map((d,j) => rowHtml(d.p, d.x, d.y, `data-s="${squad.indexOf(d.p)}"`, null, r)).join('');
 }
 function showTip(p, x, y, cx, cy){
-  const st = steps(p), r = roleById[S.role], sc = roleScore(p, r);
-  const lv = p.rep ? `${esc(p.div)}, ${starsTxt(p.rep.stars)}${st!=null?', '+(BANDS[bandOf(st)]||'').toLowerCase():''}` : esc(p.div);
-  const line = (col, v) => { const raw = p.s[col]; const adj = $('adj').checked && ADJUSTABLE.has(col) && raw != null && Math.abs(v-raw) > 1e-9; return `${esc(col)}: ${fmt(v,col)}${adj?` (raw ${fmt(raw,col)})`:''}`; };
+  const r = roleById[S.role], sc = roleScore(p, r);
+  const tier = leagueTier(p.div);
+  const lv = `${esc(p.div)} · ${esc(tierText(tier))}${p.rep ? ` · FM24 reference ${starsTxt(p.rep.stars)}` : ''}`;
+  const line = (col, v) => { const raw = p.s[col], f = leagueFactor(p.div); const adjusted = $('adj').checked && ADJUSTABLE.has(col) && raw != null && f != null; const unmapped = $('adj').checked && ADJUSTABLE.has(col) && raw != null && f == null; return `${esc(col)}: ${fmt(v,col)}${adjusted?` (raw ${fmt(raw,col)} × ${f.toFixed(2)})`:unmapped?' (unmapped; switch to Raw numbers)':''}`; };
   els.tip.innerHTML = `<b>${esc(p.name)}</b>${esc(p.club)}, ${esc(p.age)}, ${esc(p.height||'')}<br>${lv}<br>${esc(p.pos)}, ${footLabel(p.foot)}<br>Role score ${sc ?? '–'}<br>${line(S.x,x)}<br>${line(S.y,y)}<br>${esc(p.tv||'')}${p.expires?', contract to '+esc(p.expires):''}`;
   const w = els.chart.clientWidth; els.tip.style.left = Math.min(Math.max(cx, 130), w-130) + 'px'; els.tip.style.top = cy + 'px';
   els.tip.classList.toggle('below', cy < 170); els.tip.classList.add('on');
@@ -4190,7 +4191,7 @@ function sideOpen(on){ const sd = $('side'); if (!sd) return; sd.classList.toggl
 /* ---------------- League adjustment pill ---------------- */
 function adjPill(){ const on = $('adj').checked; $('adjpill').classList.toggle('on', on);
   const lg = S.save && S.save.myLeague ? shortLeague(S.save.myLeague) : 'your league';
-  $('adjtxt').textContent = on ? `Adjusted to ${lg}` : 'Raw numbers'; }
+  $('adjtxt').textContent = on ? `Tier-adjusted to ${lg}` : 'Raw numbers'; }
 const LEAGUE_SHORT = {'Campeonato Brasileiro Série A Assaí':'Brasileirão Série A','Campeonato Brasileiro Série B Betano':'Brasileirão Série B','Trendyol Süper Lig':'Süper Lig','Trendyol 1. Lig':'1. Lig','William Hill Premiership':'Scottish Premiership','Liga Profesional de Fútbol':'Liga Profesional','Credit Suisse Super League':'Swiss Super League','Liga BetPlay DIMAYOR':'Liga BetPlay','MIR Rossiyskaya Premyer-Liga':'Russian Premier League','PKO Bank Polski Ekstraklasa':'Ekstraklasa','Stoiximan Super League':'Greek Super League','ADMIRAL Bundesliga':'Austrian Bundesliga','Mozzart Bet Super liga':'Serbian Super Liga','Pankýprio Protáthlima CYTA':'Cypriot First Division','Copa de Primera División Tigo-Visión Banco':'Paraguayan Primera','Hana 1Q K League 1':'K League 1','Isuzu UTE A-League':'A-League','Ping An CFA Super League':'Chinese Super League','LaLiga Hypermotion':'LaLiga 2'};
 function shortLeague(n){ const s = String(n || ''); if (LEAGUE_SHORT[s]) return LEAGUE_SHORT[s]; return s.replace(/^Sky Bet /, '').replace(/ (EA Sports|Enilive|McDonald's|Betclic|BKT|Hypermotion)$/, ''); }
 $('adjpill').addEventListener('click', e => { if (e.target.closest('#adjpop')) return; const p = $('adjpop'); p.hidden = !p.hidden; $('adjpill').setAttribute('aria-expanded', String(!p.hidden)); });
