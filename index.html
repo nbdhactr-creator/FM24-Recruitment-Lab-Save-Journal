@@ -5258,15 +5258,15 @@ function dofPriorityBoard(){
     const candidates=res.ranked.concat(res.cols.pro.map(o=>Object.assign({},o,{prospect:true})));
     coverage.push({code,role:d.role,count:candidates.length});
     candidates.forEach(o=>{const old=byKey.get(o.p.key);
-      if(!old||o.sc>old.o.sc)byKey.set(o.p.key,{o,role:d.role,code,roles:[code]});
-      else if(!old.roles.includes(code))old.roles.push(code);
+      if(!old)byKey.set(o.p.key,{o,role:d.role,code,roles:[code]});
+      else {if(!old.roles.includes(code))old.roles.push(code);if(o.sc>old.o.sc){old.o=o;old.role=d.role;old.code=code;}}
     });
   });
   return {selected,coverage,ranked:Array.from(byKey.values()).sort((a,b)=>b.o.sc-a.o.sc||(b.o.ph??0)-(a.o.ph??0))};
 }
 function dofPriorityHtml(){
   const board=dofPriorityBoard(), rows=board.ranked;
-  const picks=board.coverage.map(x=>`<label class="check"><input type="checkbox" data-dof-pos="${esc(x.code)}"${board.selected.includes(x.code)?' checked':''}><span>${esc(SLOT_LABEL[x.code])} · ${esc(roleShort(x.role))} <b>${x.count.toLocaleString()}</b></span></label>`).join('');
+  const picks=board.coverage.map(x=>`<label class="check"><input type="checkbox" data-dof-pos="${esc(x.code)}"${board.selected.includes(x.code)?' checked':''}><span>${esc(SLOT_LABEL[x.code])} · ${esc(roleShort(x.role))} <b>${x.count.toLocaleString()}</b> · ${x.count>=5?'Covered':x.count>0?'Thin':'No coverage'}</span></label>`).join('');
   const list=rows.map((x,i)=>{const p=x.o.p,kind=x.o.prospect?'pros':'first',on=slGet(p.key,kind);return `<div class="rl-row dof-priority-row" data-dof-row data-search="${esc((p.name+' '+p.club+' '+p.pos+' '+x.roles.map(k=>SLOT_LABEL[k]).join(' ')).toLowerCase())}" style="grid-template-columns:34px minmax(0,1fr) minmax(110px,.7fr) 48px 88px auto">
     <span class="rl-n">${i+1}</span><span style="min-width:0"><button type="button" data-open="${esc(p.key)}" class="rl-ell" style="font-weight:600;text-align:left">${esc(p.name)}</button><span class="rl-sub rl-ell">${esc(p.club)} · ${esc(p.age)} yrs · ${esc(p.pos)}</span></span>
     <span class="rl-sub">${x.roles.map(k=>esc(SLOT_LABEL[k])).join(', ')}</span><b style="text-align:right">${x.o.sc}</b><span class="rl-sub" style="text-align:right">${esc(valueTxt(p))}</span><span style="display:flex;gap:4px"><button class="btn" type="button" data-dsl="${esc(p.key)}" data-kind="${kind}">${on?'★':'☆'}</button><button class="btn" type="button" data-dcmp="${esc(p.key)}">Compare</button></span></div>`;}).join('');
