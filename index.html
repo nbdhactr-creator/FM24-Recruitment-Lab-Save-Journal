@@ -2496,7 +2496,7 @@ function confHi(pr){ return Math.round(2000 * (pr || curProg())); } function con
 function suggestProgress(obj){ const iM = obj.cols.indexOf('Mins'); if (iM < 0) return {v:1, top:null};
   const m = obj.rows.map(r => +r[iM] || 0).sort((a, b) => b - a).slice(0, 50); const top = m[Math.min(25, m.length - 1)] || 0, r = top / 4400;
   return {v: r >= 0.85 ? 1 : r >= 0.6 ? 0.75 : r >= 0.35 ? 0.5 : 0.25, top}; }
-const ADJUSTABLE = new Set(Object.keys(SMETA).filter(k => /\\/90\\b/.test(k)));
+const ADJUSTABLE = new Set(Object.keys(SMETA).filter(k => /\/90\b/.test(k)));
 const CATNAME = {gk:'Goalkeeping', shoot:'Attacking', create:'Attacking', prog:'Possession', retain:'Possession', def:'Defending', read:'Defending', aer:'Aerial', press:'Pressing', phys:'Physical', ctx:'Context'};
 const BANDS = {2:'Higher reputation', 1:'Slightly higher rep.', 0:'Same reputation', '-1':'Slightly lower rep.', '-2':'Lower reputation'};
 const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
@@ -2993,12 +2993,12 @@ function leagueTier(div){
   if (/segunda federacion|segunda rfef/.test(d)) return 0.45;
   if (/tercera federacion|tercera rfef/.test(d)) return 0.35;
   if (/division de honor juvenil|juvenil nacional|juvenil division de honor/.test(d)) return 0.25;
-  if (/juvenil|youth|academy|u ?19|u ?20|u ?21/.test(d)) return 0.25;
   if (/u ?16|u ?17|youth lower|junior lower/.test(d)) return 0.15;
+  if (/juvenil|youth|academy|u ?19|u ?20|u ?21/.test(d)) return 0.25;
   // Clear tier markers only. Ambiguous competitions are deliberately left unclassified.
-  if (/sky bet league one|\\b3\\.? liga\\b|\\bliga 3\\b|\\bserie c\\b|\\bnational league\\b|\\bnational 1\\b|\\bthird division\\b|\\bdivision 3\\b/.test(d)) return 0.60;
+  if (/national league north|national league south|\\b5\\.? liga\\b|\\bliga 5\\b|\\bfifth division\\b|\\bdivision 5\\b/.test(d)) return 0.35;
   if (/sky bet league two|\\b4\\.? liga\\b|\\bliga 4\\b|\\bserie d\\b|\\bfourth division\\b|\\bdivision 4\\b/.test(d)) return 0.45;
-  if (/\\b5\\.? liga\\b|\\bliga 5\\b|\\bfifth division\\b|\\bdivision 5\\b|national league north|national league south/.test(d)) return 0.35;
+  if (/sky bet league one|\\b3\\.? liga\\b|\\bliga 3\\b|\\bserie c\\b|\\bnational league\\b|\\bnational 1\\b|\\bthird division\\b|\\bdivision 3\\b/.test(d)) return 0.60;
   if (/\\bchampionship\\b|\\bsecond division\\b|\\bdivision 2\\b|\\bserie b\\b|\\bliga 2\\b|\\b2\\. bundesliga\\b|\\bligue 2\\b/.test(d)) return 0.75;
   if (/\\bfirst division\\b|\\bdivision 1\\b|\\bprimera division\\b|\\bserie a\\b|\\bprimeira liga\\b|\\bsuper league\\b|\\bpremier league\\b/.test(d)) return 0.75;
   return null;
@@ -4047,7 +4047,7 @@ $('bm-tactic-menu').addEventListener('click',e=>{
 /* ---------------- Leagues ---------------- */
 function renderLeagues(){
   if (!S.season || S.tab !== 'leagues') return;
-  const my = S.save.myLeague, ms = myStars(), by = {};
+  const my = S.save.myLeague, by = {};
   S.season.players.forEach(p => {
     if (!p.div) return;
     (by[p.div] = by[p.div] || {n:0}).n++;
@@ -4063,7 +4063,7 @@ function renderLeagues(){
   $('lgrefnote').textContent = homeTier == null
     ? 'Your selected home league is not mapped to the saved tier framework. Automatic cross-league adjustment is unavailable until the home league is mapped; unclassified competitions remain raw. You can still set explicit manual multipliers.'
     : '';
-  const limL = Object.keys(lim).sort((a, b) => ((REP.get(norm(b)) || {stars:0}).stars - (REP.get(norm(a)) || {stars:0}).stars) || a.localeCompare(b));
+  const limL = Object.keys(lim).sort((a, b) => ((leagueTier(b) || 0) - (leagueTier(a) || 0)) || a.localeCompare(b));
   $('lgnote').hidden = !limL.length;
   if (limL.length) $('lgnote').innerHTML = `${warn_icon()}<div><b>Limited stats in ${limL.length} leagues</b><p>These league-wide gaps are treated as missing data, not genuine zero performance. Percentiles exclude missing values; role scores only use measured components and are withheld when less than 60% of a role can be measured.</p><ul>${limL.map(d => `<li><b>${esc(d)}</b>: ${esc(fam(d).join(', '))}</li>`).join('')}</ul></div>`;
   const q = norm($('lgsearch').value);
