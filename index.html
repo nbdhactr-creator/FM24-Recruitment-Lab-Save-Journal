@@ -4871,12 +4871,13 @@ function sqEmptyHtml(){
     <div class="row" style="margin-top:12px"><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button><button class="btn" type="button" id="sq-import">Import a season</button></div></div></div>`;
 }
 function sqSlotGroup(slot){
-  if (slot === 'GK') return 'Goalkeepers';
-  if (/^D-|^WB-/.test(slot)) return 'Defence';
-  if (/^DM/.test(slot)) return 'Defensive midfield';
-  if (/^M-/.test(slot)) return 'Midfield';
-  if (/^AM-/.test(slot)) return 'Attacking midfield';
-  if (/^ST-/.test(slot)) return 'Attack';
+  const position = SLOT[slot] && SLOT[slot].s;
+  if (position === 'GK') return 'Goalkeepers';
+  if (['DC','DLR','WB'].includes(position)) return 'Defence';
+  if (position === 'DM') return 'Defensive midfield';
+  if (['MC','MLR'].includes(position)) return 'Midfield';
+  if (['AMC','AMLR'].includes(position)) return 'Attacking midfield';
+  if (position === 'ST') return 'Attack';
   return 'Other';
 }
 function sqRoleAssessment(players, tac){
