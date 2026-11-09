@@ -1607,7 +1607,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     <div class="adjpop" id="adjpop" hidden>
       <label class="check"><input type="checkbox" id="adj"><span>Adjust attacking output for league strength</span></label>
       <span class="rate"><label for="adjrate">Rate per half-star</label><input id="adjrate" type="number" min="0" max="30" step="1" value="12" inputmode="numeric">%</span>
-      <p id="adjhelp">Goals, xG, chances, key passes, dribbles and progressive passes are scaled to your league's level. Percentiles and role scores use the adjusted numbers. Hover a dot to see the raw figure.</p>
+      <p id="adjhelp">Optional reputation-based heuristic, not a validated transfer prediction. It scales selected attacking and possession-volume rates before percentiles and role scores are calculated. Keep Raw numbers as your baseline; compare adjusted results as a sensitivity check.</p>
     </div>
   </div>
 </header>
@@ -1864,12 +1864,25 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     </div>
   </section>
 
-  <!-- LEAGUES -->
+  <!-- LEAGUE INTELLIGENCE -->
   <section class="view" id="v-leagues" hidden>
-    <div class="pagehead"><div><h1>Leagues</h1><p>Every league in this season, with reputation from the in-game rankings compared with yours.</p></div></div>
+    <div class="pagehead"><div><h1>League Intelligence</h1><p>Compare the imported player pools, inspect data limitations and manage optional league adjustments.</p></div></div>
     <div class="panel">
+      <div class="grp">
+        <p class="hint" style="margin:0">The reputation figures below are a built-in FM24 reference, not live reputation values read from your save. Reputation is a useful context signal, not a direct measure of player quality. Automatic multipliers are heuristics: the current 12% per half-star is a starting assumption, not a proven optimum. Raw numbers remain the baseline.</p>
+        <p class="hint" id="lgrefnote" role="note" hidden></p>
+      </div>
       <div class="lgnote" id="lgnote" role="note" hidden></div>
-      <div class="grp"><p class="hint" style="margin:0 0 10px">Set a league-specific strength multiplier for attacking volume stats. Leave a field blank to use the automatic reputation-based estimate. 1.00 is unchanged; 1.10 scales the measured output up by 10%. These adjustments only affect the adjusted view, not raw figures, minutes, percentages, wages, values or contract data.</p><div class="tablewrap"><table><thead><tr><th>League</th><th>Reputation</th><th>Level against yours</th><th class="num">Players</th><th class="num">Median value</th><th>Multiplier</th><th>Note</th></tr></thead><tbody id="lgbody"></tbody></table></div></div>
+      <div class="grp">
+        <div class="grid g3">
+          <div class="field"><label for="lgsearch">Find a league</label><input id="lgsearch" type="search" placeholder="Search league name"></div>
+          <div class="field"><label for="lgfilter">Show</label><select id="lgfilter"><option value="all">All leagues</option><option value="limited">Limited-stat leagues</option><option value="clear">No detected league-wide gaps</option><option value="rated">In reputation reference</option><option value="unrated">Not in reputation reference</option></select></div>
+          <div class="field"><label for="lgsort">Sort by</label><select id="lgsort"><option value="rep">Reference reputation</option><option value="players">Player-pool size</option><option value="name">League name</option></select></div>
+        </div>
+        <p class="hint" id="lgsummary" style="margin:8px 0 10px"></p>
+        <div class="tablewrap"><table><thead><tr><th>League</th><th>FM24 reference</th><th>Reputation gap</th><th class="num">Players</th><th>Data coverage</th><th class="num">Auto factor</th><th>Manual override</th></tr></thead><tbody id="lgbody"></tbody></table></div>
+        <p class="hint" style="margin:10px 0 0">A manual override affects only the selected league's adjusted statistics. Leave it blank to return to the automatic heuristic. A league with no reference match, or a save league that is not matched, falls back to 1.00. “No detected gaps” means the import check found no league-wide missing advanced-stat groups; it does not guarantee complete data.</p>
+      </div>
     </div>
   </section>
 
@@ -2449,7 +2462,7 @@ function suggestProgress(obj){ const iM = obj.cols.indexOf('Mins'); if (iM < 0) 
   return {v: r >= 0.85 ? 1 : r >= 0.6 ? 0.75 : r >= 0.35 ? 0.5 : 0.25, top}; }
 const ADJUSTABLE = new Set(['Gls/90','xG/90','xA/90','Asts/90','Shot/90','ShT/90','Shots Outside Box/90','OP-KP/90','K Ps/90','Ch C/90','Pr passes/90','Drb/90','OP-Crs C/90','Cr C/90','npxG/90','Non-pen G/90','CCC/90','npxG+xA/90','G+A np/90','Prog/90']);
 const CATNAME = {gk:'Goalkeeping', shoot:'Attacking', create:'Attacking', prog:'Possession', retain:'Possession', def:'Defending', read:'Defending', aer:'Aerial', press:'Pressing', phys:'Physical', ctx:'Context'};
-const BANDS = {2:'Stronger', 1:'Slightly stronger', 0:'Same level', '-1':'Slightly weaker', '-2':'Weaker'};
+const BANDS = {2:'Higher reputation', 1:'Slightly higher rep.', 0:'Same reputation', '-1':'Slightly lower rep.', '-2':'Lower reputation'};
 const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 const REP = new Map(REP_LIST.map(([n,st,rg,rk]) => [norm(n), {name:n, stars:st, region:rg, rank:rk}]));
 const BIG5 = /^(Premier League|LaLiga( EA Sports)?|Bundesliga|Serie A( TIM| Enilive)?|Ligue 1( Uber Eats| McDonald's)?)$/i;
@@ -3944,24 +3957,55 @@ $('bm-tactic-menu').addEventListener('click',e=>{
 function renderLeagues(){
   if (!S.season || S.tab !== 'leagues') return;
   const my = S.save.myLeague, ms = myStars(), by = {};
-  S.season.players.forEach(p => { if (!p.div) return; (by[p.div] = by[p.div] || {n:0, vals:[]}).n++; if (p.val != null) by[p.div].vals.push(p.val); });
-  const list = Object.keys(by).map(d => ({d, n:by[d].n, med:median(by[d].vals), rep:REP.get(norm(d))}));
-  const tier = {}; list.forEach(l => { if (l.rep && l.med != null) (tier[l.rep.stars] = tier[l.rep.stars] || []).push(l.med); });
-  list.sort((a,b) => ((b.rep?b.rep.stars:0) - (a.rep?a.rep.stars:0)) || ((b.med||0) - (a.med||0)));
-  const lim = S.season.limited || {}, limL = Object.keys(lim).sort((a, b) => ((REP.get(norm(b)) || {stars:0}).stars - (REP.get(norm(a)) || {stars:0}).stars) || a.localeCompare(b));
-  const fam = d => [...new Set(lim[d].map(k => ADV_FAMILY[k] || k))];
+  S.season.players.forEach(p => {
+    if (!p.div) return;
+    (by[p.div] = by[p.div] || {n:0}).n++;
+  });
+  const lim = S.season.limited || {};
+  const fam = d => [...new Set((lim[d] || []).map(k => ADV_FAMILY[k] || k))];
+  const all = Object.keys(by).map(d => ({d, n:by[d].n, rep:REP.get(norm(d))}));
+  const limitedCount = all.filter(l => !!lim[l.d]).length;
+  const unratedCount = all.filter(l => !l.rep).length;
+  $('lgsummary').textContent = `${all.length} leagues · ${S.season.players.length.toLocaleString()} player rows · ${limitedCount} with detected stat gaps · ${unratedCount} without a reference rating`;
+  $('lgrefnote').hidden = ms != null;
+  $('lgrefnote').textContent = ms == null
+    ? 'Your selected league is not matched to the built-in FM24 reputation reference. Automatic factors therefore fall back to 1.00 until the league is matched; manual overrides still work.'
+    : '';
+  const limL = Object.keys(lim).sort((a, b) => ((REP.get(norm(b)) || {stars:0}).stars - (REP.get(norm(a)) || {stars:0}).stars) || a.localeCompare(b));
   $('lgnote').hidden = !limL.length;
-  if (limL.length) $('lgnote').innerHTML = `${warn_icon()}<div><b>Limited stats in ${limL.length} league${limL.length === 1 ? '' : 's'}</b><p>These stats are zero or blank for every player in the league, so the Lab treats them as missing there rather than as real zeros. Percentiles leave those players out of that stat, and a role score only counts what is measured (no score if under 60% of the role can be measured).</p><ul>${limL.map(d => `<li><b>${esc(d)}</b>: ${esc(fam(d).join(', '))}</li>`).join('')}</ul></div>`;
-  $('lgbody').innerHTML = list.map(l => { let note = '';
-    if (!l.rep) note = 'Not in the reputation rankings, so it has no level band.';
-    else if (tier[l.rep.stars] && tier[l.rep.stars].length >= 3 && l.med != null){ const ratio = l.med / median(tier[l.rep.stars]);
-      if (ratio < 0.4) note = 'Players valued well below the rest of its tier. Its reputation may flatter it, or low wages may depress values.';
-      else if (ratio > 2.5) note = 'Players valued well above the rest of its tier. Either it is stronger than its reputation, or money in the league inflates values.'; }
+  if (limL.length) $('lgnote').innerHTML = `${warn_icon()}<div><b>Limited stats in ${limL.length} leagues</b><p>These league-wide gaps are treated as missing data, not genuine zero performance. Percentiles exclude missing values; role scores only use measured components and are withheld when less than 60% of a role can be measured.</p><ul>${limL.map(d => `<li><b>${esc(d)}</b>: ${esc(fam(d).join(', '))}</li>`).join('')}</ul></div>`;
+  const q = norm($('lgsearch').value);
+  const filter = $('lgfilter').value;
+  const sort = $('lgsort').value;
+  let list = all.filter(l => {
+    if (q && !norm(l.d).includes(q)) return false;
+    if (filter === 'limited' && !lim[l.d]) return false;
+    if (filter === 'clear' && lim[l.d]) return false;
+    if (filter === 'rated' && !l.rep) return false;
+    if (filter === 'unrated' && l.rep) return false;
+    return true;
+  });
+  list.sort((a,b) => {
+    if (sort === 'name') return a.d.localeCompare(b.d);
+    if (sort === 'players') return b.n - a.n || a.d.localeCompare(b.d);
+    return ((b.rep ? b.rep.stars : -1) - (a.rep ? a.rep.stars : -1)) || b.n - a.n || a.d.localeCompare(b.d);
+  });
+  $('lgbody').innerHTML = list.map(l => {
     const st = (l.rep && ms != null) ? Math.round((l.rep.stars - ms)/0.5) : null;
     const custom = S.save && S.save.leagueFactors && S.save.leagueFactors[norm(l.d)];
     const automatic = defaultLeagueFactor(l.d);
-    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.rep?starsTxt(l.rep.stars):'–'}<div class="pclub">${l.rep?`${esc(l.rep.region)}, ${ordinal(l.rep.rank)}`:''}</div></td><td>${l.d===my?'<span class="lvl">Your league</span>':bandHtml(st)}</td><td class="num">${l.n}</td><td class="num">${money(l.med)}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="${automatic.toFixed(2)}" title="Automatic: ${automatic.toFixed(2)}. Enter 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"></td><td class="pclub" style="max-width:320px">${lim[l.d] ? `<span class="limtag" title="Missing here: ${esc(fam(l.d).join(', '))}">${warn_icon()}Limited stats</span> ` : ''}${note}</td></tr>`; }).join('');
+    const groups = fam(l.d);
+    const coverage = lim[l.d]
+      ? `<span class="limtag" title="Missing groups: ${esc(groups.join(', '))}">${warn_icon()}Limited · ${groups.length} groups</span>`
+      : '<span class="pclub">No detected gaps</span>';
+    const note = !l.rep ? 'No reference match; automatic factor is 1.00.' : (ms == null ? 'Your league is not matched; automatic factor is 1.00.' : '');
+    return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.rep?starsTxt(l.rep.stars):'–'}<div class="pclub">${l.rep?`${esc(l.rep.region)}, ${ordinal(l.rep.rank)} in reference`:'Not listed'}</div></td><td>${l.d===my?'<span class="lvl">Your league</span>':bandHtml(st)}</td><td class="num">${l.n.toLocaleString()}</td><td>${coverage}</td><td class="num" title="Reputation-based heuristic; not a calibrated transfer prediction">${automatic.toFixed(2)}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Manual multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="Auto" title="Automatic: ${automatic.toFixed(2)}. Enter 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"><div class="pclub">${esc(note)}</div></td></tr>`;
+  }).join('');
+  if (!list.length) $('lgbody').innerHTML = '<tr><td colspan="7" class="hint">No leagues match these filters.</td></tr>';
 }
+$('lgsearch').addEventListener('input', renderLeagues);
+$('lgfilter').addEventListener('change', renderLeagues);
+$('lgsort').addEventListener('change', renderLeagues);
 
 document.addEventListener('change', async e => {
   const input = e.target.closest('[data-league-factor]');
