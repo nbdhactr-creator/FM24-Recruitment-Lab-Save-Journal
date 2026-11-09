@@ -2578,7 +2578,7 @@ async function openIDB(){
   d.close();
   return openIDBRequest(nextVersion);
 }
-function idbTx(d, store, mode, fn){ return new Promise((res, rej) => { const tx = d.transaction(store, mode); const st = tx.objectStore(store); const out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out); tx.onerror = () => rej(tx.error || new Error('IndexedDB transaction failed')); tx.onabort = () => rej(tx.error || new Error('IndexedDB transaction was aborted')); }); }
+function idbTx(d, store, mode, fn){ return new Promise((res, rej) => { let settled = false; const tx = d.transaction(store, mode); const st = tx.objectStore(store); const out = fn(st); const timer = setTimeout(() => { if (settled) return; settled = true; const e = new Error('IndexedDB ' + store + ' read/write timed out after 10 seconds'); e.name = 'TimeoutError'; rej(e); try { tx.abort(); } catch(_){} }, 10000); const finish = (err, value) => { if (settled) return; settled = true; clearTimeout(timer); if (err) rej(err); else res(value); }; tx.oncomplete = () => finish(null, out && out.result !== undefined ? out.result : out); tx.onerror = () => finish(tx.error || new Error('IndexedDB transaction failed')); tx.onabort = () => finish(tx.error || new Error('IndexedDB transaction was aborted')); }); }
 const idbAll = (d,s) => idbTx(d,s,'readonly',st => st.getAll());
 const idbGet = (d,s,k) => idbTx(d,s,'readonly',st => st.get(k));
 const idbPut = (d,s,v) => idbTx(d,s,'readwrite',st => { st.put(v); return null; });
