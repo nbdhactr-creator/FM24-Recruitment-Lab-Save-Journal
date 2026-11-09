@@ -5175,16 +5175,16 @@ function dofPicks(ctx){ const role = ctx.role, c = dofCfg(), B = dofBudget() * 1
   const bySc = (a, b) => (b.sc - a.sc) || ((b.ph ?? 0) - (a.ph ?? 0));
   const vCap = Math.max(5e5, Math.min(3e6, B * 0.15)), sCap = Math.max(4e5, Math.min(2.5e6, B * 0.12));
   const dMin = c.lvl === '0' ? 0 : 1;
-  const dream = take(el.filter(o => o.st != null && o.st >= dMin && o.conf >= 2 && o.sc >= base + 3).sort(bySc), 2);
-  const upg = take(el.filter(o => o.sc >= base + 10 && o.p.val <= B / 2 && o.p.age >= 22 && o.p.age <= 29 && o.conf >= 2).sort(bySc), 2);
+  const dream = take(el.filter(o => o.st != null && o.st >= dMin && o.conf >= 2 && o.sc >= base + 3).sort(bySc), Infinity);
+  const upg = take(el.filter(o => o.sc >= base + 10 && o.p.val <= B / 2 && o.p.age >= 22 && o.p.age <= 29 && o.conf >= 2).sort(bySc), Infinity);
   const ratio = o => (o.sc - base + 1) / Math.max(o.p.val, 5e5);
-  const val = take(el.filter(o => o.p.val <= vCap && o.conf >= 2 && o.sc >= base + 3).sort((a, b) => ratio(b) - ratio(a)), 2);
-  const squad = take(el.filter(o => o.st != null && o.st >= 0 && o.conf >= 3 && o.p.age >= 23 && o.p.age <= 31 && o.p.val <= sCap && o.sc >= base - 10).sort(bySc), 2);
+  const val = take(el.filter(o => o.p.val <= vCap && o.conf >= 2 && o.sc >= base + 3).sort((a, b) => ratio(b) - ratio(a)), Infinity);
+  const squad = take(el.filter(o => o.st != null && o.st >= 0 && o.conf >= 3 && o.p.age >= 23 && o.p.age <= 31 && o.p.val <= sCap && o.sc >= base - 10).sort(bySc), Infinity);
   const pros = S.season.players.filter(p => p.club !== my && p.age != null && p.age <= 21 && (p.mins || 0) >= prMin() && posOK(p, role, ex) && !blockers(p).length)
     .map(p => ({p, sc:ageScore(p, role), all:roleScore(p, role)})).filter(o => o.sc != null).map(dec).sort((a, b) => b.sc - a.sc);
-  const pro = take(pros, 2);
-  const left = scored.slice().sort((a, b) => b.sc - a.sc).slice(0, 12).filter(o => !picked.has(o.p.key)).map(o => ({o, r:blockers(o.p)})).filter(x => x.r.length).slice(0, 3);
-  const out = {base, vCap, sCap, dMin, cols:{dream, upg, val, squad, pro}, left, n:scored.length}; DOFC.set(ck, out); return out; }
+  const pro = take(pros, Infinity);
+  const ranked = el.slice().sort(bySc), left = scored.filter(o => !picked.has(o.p.key)).map(o => ({o, r:blockers(o.p)})).filter(x => x.r.length).sort((a, b) => b.o.sc - a.o.sc);
+  const out = {base, vCap, sCap, dMin, cols:{dream, upg, val, squad, pro}, ranked, left, n:scored.length}; DOFC.set(ck, out); return out; }
 const DOF_ICON = {dream:'M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z', upg:'M10 16V4M5 9l5-5 5 5', val:'M3 10V3h7l7 7-7 7zM7 7h.01',
   squad:'M7 8a2.5 2.5 0 1 0 0-.01M2.5 16c.6-3 2.4-4.5 4.5-4.5s3.9 1.5 4.5 4.5M14 9a2 2 0 1 0 0-.01M12.5 12.5c2.4-.3 4 .9 5 3.5', pro:'M10 17V9M10 9c0-3 2-5 5-5 0 3-2 5-5 5zM10 11c0-2.5-1.7-4-4-4 0 2.5 1.7 4 4 4z'};
 const DOF_NAME = {dream:'Dream', upg:'Upgrade', val:'Value', squad:'Squad player', pro:'Prospect'};
@@ -5229,10 +5229,10 @@ function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.ta
     squad:`Rotation level · proven at your level or above · under ${money(res.sCap)}`, pro:'21 or under · ranked against his age group'};
   const cols = ['dream','upg','val','squad','pro'].map(k => { const cards = res.cols[k];
     return `<section class="dof-col" aria-label="${esc(DOF_NAME[k])}"><div class="dof-ch"><h2><svg viewBox="0 0 20 20" aria-hidden="true"><path d="${DOF_ICON[k]}"/></svg>${esc(DOF_NAME[k])}</h2><p title="${esc(rules[k])}">${esc(rules[k])}</p></div>
-      ${cards.map(o => dofCard(k, o, ctx, res)).join('')}${cards.length < 2 ? Array(2 - cards.length).fill(`<div class="panel dof-card empty"><b style="color:var(--ink2)">Nobody fits</b><span>No one passes this column’s rules and your limits. Try a bigger budget, a higher wage cap or fewer filters.</span></div>`).join('') : ''}</section>`; }).join('');
-  const left = res.left.map(x => `${esc(x.o.p.name)} (${esc(x.o.p.club)}, ${x.o.sc}) ${esc(x.r.join(' and '))}`).join(' · ');
+      ${cards.map(o => dofCard(k, o, ctx, res)).join('') || `<div class="panel dof-card empty"><b style="color:var(--ink2)">Nobody fits</b><span>No one passes this column’s rules and your limits. Try a bigger budget, a higher wage cap or fewer filters.</span></div>`}</section>`; }).join('');
+  const left = res.left.map(x => `${esc(x.o.p.name)} (${esc(x.o.p.club)}, ${x.o.sc}) — ${esc(x.r.join('; '))}`).join(' · ');
   root.innerHTML = `<div class="rl-ph"><div style="min-width:0"><h1 style="margin:0;font:700 32px/1 var(--display);letter-spacing:.01em">Director of Football recommendations</h1>
-      <p style="margin:5px 0 0;color:var(--ink2);font-size:13px">Ten players for one role, from the dream signing you could realistically land to the prospect you sign now and develop. Worked out from your data, your budget and your philosophy.</p></div>
+      <p style="margin:5px 0 0;color:var(--ink2);font-size:13px">All qualifying candidates for the selected role, organised from realistic dream signings to value, squad options and prospects. Worked out from your data, budget and philosophy.</p></div>
       <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap"><button class="btn" type="button" data-dof="cmp">Compare top four</button><button class="btn primary" type="button" data-dof="slall">☆ Add all to the shortlists</button></div></div>
     <section class="panel dof-ctl" aria-label="Role and limits">
       <div class="field"><label class="rl-lab" for="dof-slot">Role</label><select id="dof-slot" class="rl-sel" style="width:auto;max-width:360px">${dofSlotOptions(ctx)}</select></div>
@@ -5245,7 +5245,7 @@ function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.ta
       ${DOF.more ? dofFiltersHtml(c) : (dofFilterCount(c) ? `<p class="dof-fsum">${esc(dofFilterSummary(c))}</p>` : '')}
     </section>
     <div class="dof-board">${cols}</div>
-    <p class="dof-foot" title="${esc(left.replace(/&amp;/g, '&'))}">${left ? 'Considered and left out: ' + left + '. ' : ''}${res.n.toLocaleString()} players ranked for ${esc(roleShort(role))} across ${S.season.leagues.length} leagues, including the search positions in your Philosophy.</p>`;
+    <details class="panel dof-excluded"><summary>Excluded candidates · ${res.left.length} with filter conflicts</summary><div class="dof-excluded-list">${res.left.map(x => `<div class="rl-row"><span style="min-width:0"><b>${esc(x.o.p.name)}</b><span class="rl-sub">${esc(x.o.p.club)} · ${esc(x.o.p.pos)} · score ${x.o.sc}</span></span><span class="rl-sub" style="text-align:right;max-width:55%">${esc(x.r.join(' · '))}</span><button class="btn" type="button" data-open="${esc(x.o.p.key)}">Open</button></div>`).join('') || '<p class="rl-empty">No candidates were excluded by the current filters.</p>'}</div></details><p class="dof-foot">${res.ranked.length.toLocaleString()} eligible candidates ranked for ${esc(roleShort(role))} across ${S.season.leagues.length} leagues, including the search positions in your Philosophy. Excluded candidates remain visible above with their reasons.</p>`;
   root.classList.toggle('fitgrow', DOF.more);
   if (!DOF.bound){ DOF.bound = true; bindDof(root); }
 }
