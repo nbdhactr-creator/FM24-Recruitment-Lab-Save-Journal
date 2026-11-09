@@ -4526,7 +4526,7 @@ function ensureSaveDefaults(s){
   if (!s.currentSeason) s.currentSeason = ss.length ? ss[ss.length - 1].label : s.startSeason;
   if (!s.games) s.games = gamesFor(s.myLeague);
   s.checkpoints = s.checkpoints || []; s.jseasons = s.jseasons || [];
-  s.sq = s.sq || {}; ['prof', 'role', 'acad', 'debut', 'lens'].forEach(k => { s.sq[k] = s.sq[k] || {}; }); s.sq.fit = s.sq.fit || {src:'', roles:[], listed:true};
+  s.sq = s.sq || {}; ['prof', 'role', 'acad', 'debut', 'lens'].forEach(k => { s.sq[k] = s.sq[k] || {}; }); s.sq.fit = s.sq.fit || {src:'', roles:[], listed:true}; s.sq.assessmentTactic = s.sq.assessmentTactic || '';
 }
 function saveSeasons(s){
   const out = new Set(); const a = sy(s.startSeason), b = sy(s.currentSeason);
@@ -4717,7 +4717,7 @@ $('sh-del').onclick = async () => {
 
 /* ================= Squad stats ================= */
 const CK = {data:new Map(), proc:new Map()};
-const SQ = {season:null, ckId:null, mode:'season', scope:'all', bound:false};
+const SQ = {season:null, ckId:null, mode:'season', scope:'all', tacId:null, bound:false};
 const POOLC = new Map();
 const TIER_LABEL = {elite:'Elite', good:'Good', floor:'Floor', below:'Below floor', na:''};
 function sortCks(a){ return (a || []).slice().sort((x, y) => ((sy(x.season) || 0) - (sy(y.season) || 0)) || String(x.date || '').localeCompare(String(y.date || '')) || ((x.created || 0) - (y.created || 0))); }
@@ -4885,7 +4885,7 @@ function sqRoleAssessment(players, tac){
     const role = roleById[tac.roles && tac.roles[slot]];
     return candidates.map(p => {
       const eligible = SLOT[slot].need.some(x => p.slots && p.slots.has(x));
-      const sc = eligible && role ? sqScore(p, role, 'all') : null;
+      const sc = eligible && role ? sqScore(p, role, SQ.scope) : null;
       return sc;
     });
   });
@@ -4938,12 +4938,13 @@ async function renderSquadStats(){
   const options=seasons.map(x=>`<option value="${esc(x)}"${x===SQ.season?' selected':''}>${esc(x)}</option>`).join('');
   const ckOptions=cks.map(x=>`<option value="${esc(x.id)}"${ck&&x.id===ck.id?' selected':''}>${esc(x.label||x.date||x.id)}</option>`).join('');
   const groupCards=groupData.map(g=>`<div class="kpi"><div class="k"><span>${esc(g.name)}</span><span>${g.covered}/${g.total} roles scored</span></div><div class="v">${g.rating==null?'—':(g.rating/10).toFixed(1)+'/10'}</div><div class="s">${g.covered===g.total?'All tactical slots measured':g.covered?'Partial role coverage':'No measurable role scores'}</div></div>`).join('');
-  const roleRows=assessment.map(x=>`<tr><td><b>${esc(SLOT_LABEL[x.slot]||x.slot)}</b><div class="pclub">${esc(x.role?roleTitle(x.role):'No role assigned')}</div></td><td><span class="pname">${esc(x.player?x.player.name:'No measured starter')}</span>${x.player?`<div class="pclub">${esc(x.player.pos||'')} · ${Math.round(x.player.mins||0).toLocaleString()} mins</div>`:''}</td><td class="num">${x.score==null?'—':x.score}</td><td>${x.depth.slice(1,3).map(d=>`<div>${esc(d.p.name)} <span class="pclub">${d.sc}</span></div>`).join('')||'<span class="pclub">No scored cover</span>'}</td><td class="num">${x.depth.length}</td></tr>`).join('');
+  const roleRows=assessment.map(x=>`<tr><td><b>${esc(SLOT_LABEL[x.slot]||x.slot)}</b><div class="pclub">${esc(x.role?roleTitle(x.role):'No role assigned')}</div></td><td><span class="pname">${esc(x.player?x.player.name:'No measured starter')}</span>${x.player?`<div class="pclub">${esc(x.player.pos||'')} · ${Math.round(x.player.mins||0).toLocaleString()} mins</div>`:''}</td><td class="num">${x.score==null?'—':x.score}</td><td>${x.depth.filter(d=>!x.player||d.p.key!==x.player.key).slice(0,2).map(d=>`<div>${esc(d.p.name)} <span class="pclub">${d.sc}</span></div>`).join('')||'<span class="pclub">No scored cover</span>'}</td><td class="num">${x.depth.length}</td></tr>`).join('');
   root.innerHTML=`<div class="panel">
     <div class="phead"><div><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}${s.myClub?' · '+esc(s.myClub):''}</p></div><div class="row"><button class="btn primary" type="button" data-sq="add">Add checkpoint</button></div></div>
     <div class="sq-ctl">
       <div class="field"><label for="sq-season">Season</label><select id="sq-season">${options}</select></div>
       <div class="field"><label for="sq-ck">Squad data</label><select id="sq-ck"><option value="">Current world import</option>${ckOptions}</select></div>
+      <div class="field"><label for="sq-tactic">Assess against tactic</label><select id="sq-tactic">${tacs.map(t=>`<option value="${esc(t.id)}"${t.id===tac.id?" selected":""}>${esc(t.name)} · ${esc(t.formation)}</option>`).join("")}</select></div>
       <div class="field"><label for="sq-scope">Percentile pool</label><select id="sq-scope"><option value="all"${SQ.scope==='all'?' selected':''}>All leagues</option><option value="big5"${SQ.scope==='big5'?' selected':''}>Big five</option><option value="mine"${SQ.scope==='mine'?' selected':''}>Your league</option></select></div>
       <div class="field"><label>Data source</label><div class="hint" style="padding:10px 0">${esc(source)}</div></div>
     </div>
@@ -4960,7 +4961,7 @@ async function renderSquadStats(){
     <div class="grp"><h3>Age profile</h3><div class="grid g2">${Object.entries(ageCounts).map(([k,v])=>`<div class="kpi"><div class="k"><span>${k}</span><span>${players.length?Math.round(v/players.length*100):0}%</span></div><div class="v">${v}</div></div>`).join('')}</div></div>
     <div class="grp"><h3>Contract and wage indicators</h3><div class="grid g2">
       <div class="kpi"><div class="k"><span>Contracts expiring within 12 months</span></div><div class="v">${expiring}</div><div class="s">Only players with a readable contract end date are counted.</div></div>
-      <div class="kpi"><div class="k"><span>Recorded weekly wages</span></div><div class="v">${wagePlayers.length?esc(fmtMoney(wageTotal)):'—'}</div><div class="s">${wagePlayers.length} of ${players.length} players have wage data. This is not a sustainability verdict without a budget or wage cap.</div></div>
+      <div class="kpi"><div class="k"><span>Recorded weekly wages</span></div><div class="v">${wagePlayers.length?esc(wageTotal.toLocaleString()):'—'}</div><div class="s">${wagePlayers.length} of ${players.length} players have wage data. This is not a sustainability verdict without a budget or wage cap.</div></div>
     </div></div>
     <p class="hint" style="padding:0 18px 16px">Method: role-fit index is the mean of measurable best-XI role percentiles, divided by ten. It is a tactical screening measure, not a prediction of league results. Squad depth counts players with a measurable score, not everyone listed at a position. Comparison percentiles use the selected world-import pool.</p>
   </div>`;
@@ -4969,6 +4970,7 @@ function isAcad(s, p){ const o = s.sq.acad[p.key]; if (o === true || o === false
 function bindSquad(root){
   root.addEventListener('click', async e => {
     const q = e.target.closest('[data-sq]'); if (q){ if (q.dataset.sq === 'add') openCk(null); else { const ck = (S.save.checkpoints || []).find(c => c.id === SQ.ckId); if (ck) openCk(ck); } return; }
+    if (e.target.closest('#sq-import')){ openImport(false); return; }
     const m = e.target.closest('[data-mode]'); if (m){ SQ.mode = m.dataset.mode; renderSquadStats(); return; }
     const u = e.target.closest('[data-unacad]'); if (u){ S.save.sq.acad[u.dataset.unacad] = false; await persist(); renderSquadStats(); return; }
     const fd = e.target.closest('[data-fitdel]'); if (fd){ const f = S.save.sq.fit; f.roles = f.roles.filter(x => x !== fd.dataset.fitdel); await persist(); renderSquadStats(); return; }
@@ -4979,8 +4981,9 @@ function bindSquad(root){
     const t = e.target, s = S.save;
     if (t.id === 'sq-import'){ openImport(false); return; }
     if (t.id === 'sq-season'){ SQ.season = t.value; SQ.ckId = null; renderSquadStats(); return; }
-    if (t.id === 'sq-ck'){ SQ.ckId = t.value; renderSquadStats(); return; }
+    if (t.id === 'sq-ck'){ SQ.ckId = t.value || ''; renderSquadStats(); return; }
     if (t.id === 'sq-scope'){ SQ.scope = t.value; renderSquadStats(); return; }
+    if (t.id === 'sq-tactic'){ SQ.tacId = t.value; s.sq.assessmentTactic = t.value; await persist(); renderSquadStats(); return; }
     if (t.id === 'sq-ck'){ SQ.ckId = t.value || null; renderSquadStats(); return; }
     if (t.id === 'sq-nodef'){ setNoDef(t.checked); return; }
     if (t.dataset.lens){ s.sq.lens[t.dataset.lens] = t.value; await persist(); renderSquadStats(); return; }
