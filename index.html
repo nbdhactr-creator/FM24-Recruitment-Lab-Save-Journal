@@ -2578,7 +2578,7 @@ async function openIDB(){
   d.close();
   return openIDBRequest(nextVersion);
 }
-function idbTx(d, store, mode, fn){ return new Promise((res, rej) => { const tx = d.transaction(store, mode); const st = tx.objectStore(store); const out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out); tx.onerror = () => rej(tx.error); }); }
+function idbTx(d, store, mode, fn){ return new Promise((res, rej) => { const tx = d.transaction(store, mode); const st = tx.objectStore(store); const out = fn(st); tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out); tx.onerror = () => rej(tx.error || new Error('IndexedDB transaction failed')); tx.onabort = () => rej(tx.error || new Error('IndexedDB transaction was aborted')); }); }
 const idbAll = (d,s) => idbTx(d,s,'readonly',st => st.getAll());
 const idbGet = (d,s,k) => idbTx(d,s,'readonly',st => st.get(k));
 const idbPut = (d,s,v) => idbTx(d,s,'readwrite',st => { st.put(v); return null; });
@@ -5405,9 +5405,10 @@ function libMsg(kind, detail){
   const el = $('libmsg'); if (!kind){ el.hidden = true; el.innerHTML = ''; return; }
   const denied = Store.perms && ['db','assets','user'].some(k => Store.perms[k] === 'denied');
   const title = kind === 'read' ? 'Your library couldn\u2019t be read' : denied ? 'Storage is switched off for this page' : 'Your saved library isn\u2019t reachable in this view';
-  const text = kind === 'read' ? `The Lab reached its storage but reading your saves failed${detail ? ' (' + esc(detail) + ')' : ''}. Your saves aren\u2019t lost. Try again in a moment.`
-    : denied ? 'You turned off storage for the Lab, so it can\u2019t open your saves. Turn it back on in Permissions, then try again.'
-    : 'This view didn\u2019t give the Lab its storage, so it fell back to this browser\u2019s own storage, which is separate and may be empty. Your saves are still kept with the Lab. Try again, or open the Lab from its link in a browser tab.';
+  const text = kind === 'read' ? `The Lab reached its storage but reading your saves failed${detail ? ' (' + esc(detail) + ')' : ''}. Your saves aren’t lost. Try again in a moment.`
+    : detail && String(detail).startsWith('IndexedDB:') ? `The browser could not open the local save database (${esc(detail)}). The Lab has not deleted or overwritten your saves. Close other Recruitment Lab tabs and try again.`
+    : denied ? 'You turned off storage for the Lab, so it can’t open your saves. Turn it back on in Permissions, then try again.'
+    : 'This view didn’t give the Lab its storage, so it fell back to this browser’s own storage, which is separate and may be empty. Your saves are still kept with the Lab. Try again, or open the Lab from its link in a browser tab.';
   el.innerHTML = `<b>${title}</b><span>${text}</span><div class="row"><button class="btn sm primary" type="button" data-lib="retry">Try again</button><button class="btn sm" type="button" data-lib="perms">Permissions</button></div>`;
   el.hidden = false;
 }
@@ -6583,7 +6584,7 @@ async function start(){
   const slow = setTimeout(() => { $('loading').textContent = 'Still connecting to your library. This can take up to 10 seconds.'; }, 3500);
   S.saves = []; S.save = null; S.season = null; S.seasonCache.clear(); JR.cache.clear(); CK.data.clear(); CK.proc.clear(); MG.doc = null; MG.loading = null;
   await Store.init(); clearTimeout(slow); storeBadge(); mgr();
-  if (Store.kind !== 'cloud' && Store.why) libMsg('reach');
+  if (Store.kind !== 'cloud' && Store.why) libMsg('reach', Store.why);
   $('loading').textContent = 'Loading your library';
   try { S.saves = await Store.listSaves(); } catch(e){ console.error(e); S.saves = []; libMsg('read', e && (e.code || e.message)); }
   if (!S.saves.length){ showOnboard(Store.kind === 'local' ? '' : Store.kind === 'none' ? 'Storage is unavailable here, so imports last for this session only.' : ''); fillSaveSelect(); setTab(S.tab); return; }
