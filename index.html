@@ -2305,6 +2305,10 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <button class="btn sm ghost" id="rl-cloud-signout" type="button" hidden>Sign out</button>
         <button class="btn sm ghost" id="rl-cloud-check" type="button">Check cloud setup</button>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn sm" id="rl-cloud-migrate" type="button">Preview local data migration</button>
+      </div>
+      <p class="hint" id="rl-cloud-migration-status">Cloud migration is off. Your local data remains on this device.</p>
       <p class="hint">Signing in does not upload, replace, or delete any Recruitment Lab data. Cloud sync and the one-time migration will be enabled only after we finish their safeguards.</p>
     </div>
     <div class="field"><span class="lab">Save</span>
@@ -2575,61 +2579,47 @@ const statLabel = k => esc(k) + (isDerived(k) ? '<span class="calc" title="Calcu
 const MEM = new Map();
 const thaw = o => o == null ? o : JSON.parse(JSON.stringify(o));
 const Store = {kind:'none', db:null, assets:null, uid:null, col:null, downloads:null, idb:null,
-  why:'', perms:null,
+  why:'', perms:null, urlCache:new Map(),
   async init(){
-    this.why = ''; this.perms = null; this.kind = 'none'; this.col = null;
-    const C = null;
-    if (C){
-      C.use('downloads').then(d => { this.downloads = d; }, () => {});
-      try {
-        const [db, user, assets] = await Promise.all([C.use('db'), C.use('user'), C.use('assets')]);
-        const uid = user ? await user.id() : null;
-        if (db && assets && uid){ this.kind = 'cloud'; this.db = db; this.assets = assets; this.uid = uid; this.col = db.collection('data/users/' + uid); return; }
-        this.why = !db ? 'db' : !assets ? 'assets' : 'user';
-      } catch(e){ console.warn('cloud unavailable', e); this.why = 'error ' + (e && (e.code || e.message) || ''); }
-      try { const pm = await C.use('permissions'); if (pm) this.perms = await pm.state(); } catch(e){}
-    }
-    try { this.idb = this.idb || await openIDB(); this.kind = 'local'; } catch(e){ this.kind = 'none'; }
+    this.why=''; this.kind='none'; this.col=null;
+    try { this.idb=this.idb||await openIDB(); this.kind='local'; } catch(e){ this.kind='none'; }
+    if (!RL_SUPABASE || !RL_AUTH_USER || localStorage.getItem('rl-cloud-enabled')!=='1') return;
+    try {
+      const u=await RL_SUPABASE.auth.getUser(); if(u.error) throw u.error;
+      if(!u.data.user || u.data.user.id!==RL_AUTH_USER.id) throw new Error('Session user mismatch');
+      this.uid=RL_AUTH_USER.id; this.kind='cloud';
+      const q=await RL_SUPABASE.from('rl_documents').select('id').limit(1);
+      if(q.error) throw q.error;
+      const st=await RL_SUPABASE.storage.from('recruitment-lab-assets').list(this.uid,{limit:1});
+      if(st.error) throw st.error;
+    } catch(e){ this.why=e.message||'Cloud connection failed'; this.kind=this.idb?'local':'none'; console.error('Cloud store unavailable',e); }
   },
+  async _get(id){ const r=await RL_SUPABASE.from('rl_documents').select('data').eq('user_id',this.uid).eq('id',id).maybeSingle(); if(r.error) throw r.error; return r.data?r.data.data:null; },
+  async _put(id,data){ const r=await RL_SUPABASE.from('rl_documents').upsert({user_id:this.uid,id,data,updated_at:new Date().toISOString()},{onConflict:'user_id,id'}); if(r.error) throw r.error; },
+  async _del(id){ const r=await RL_SUPABASE.from('rl_documents').delete().eq('user_id',this.uid).eq('id',id); if(r.error) throw r.error; },
   async listSaves(){
-    if (this.kind === 'cloud'){ const q = await this.col.get(); return q.docs.filter(d => d.id.startsWith('save_')).map(d => Object.assign({id:d.id}, thaw(d.data()))); }
-    if (this.kind === 'local') return idbAll(this.idb, 'saves');
-    return [];
+    if(this.kind==='cloud'){const r=await RL_SUPABASE.from('rl_documents').select('id,data').eq('user_id',this.uid).like('id','save:%');if(r.error)throw r.error;return (r.data||[]).map(x=>Object.assign({id:x.id.slice(5)},x.data||{}));}
+    if(this.kind==='local')return idbAll(this.idb,'saves'); return [];
   },
-  async putSave(s){
-    const data = JSON.parse(JSON.stringify(s)); delete data.id;
-    if (this.kind === 'cloud') return this.col.doc(s.id).set(data);
-    if (this.kind === 'local') return idbPut(this.idb, 'saves', Object.assign({id:s.id}, data));
-  },
-  async delSave(id){ if (this.kind === 'cloud') return this.col.doc(id).delete(); if (this.kind === 'local') return idbDel(this.idb, 'saves', id); },
-  async getMeta(){ try { if (this.kind === 'cloud'){ const d = await this.col.doc('meta').get(); return d.exists ? thaw(d.data()) : {}; } if (this.kind === 'local'){ return (await idbGet(this.idb,'meta','meta')) || {}; } } catch(e){} return {}; },
-  async setMeta(m){ try { if (this.kind === 'cloud') await this.col.doc('meta').set(m); else if (this.kind === 'local') await idbPut(this.idb,'meta',Object.assign({id:'meta'},m)); } catch(e){} },
+  async putSave(s){const d=JSON.parse(JSON.stringify(s));delete d.id;if(this.kind==='cloud')return this._put('save:'+s.id,d);if(this.kind==='local')return idbPut(this.idb,'saves',Object.assign({id:s.id},d));},
+  async delSave(id){if(this.kind==='cloud')return this._del('save:'+id);if(this.kind==='local')return idbDel(this.idb,'saves',id);},
+  async getMeta(){if(this.kind==='cloud')return (await this._get('meta'))||{};if(this.kind==='local')return (await idbGet(this.idb,'meta','meta'))||{};return {};},
+  async setMeta(m){if(this.kind==='cloud')return this._put('meta',m);if(this.kind==='local')return idbPut(this.idb,'meta',Object.assign({id:'meta'},m));},
   async putSeason(obj){
-    const text = JSON.stringify(obj);
-    if (this.kind === 'cloud'){
-      if (text.length > 19.5*1024*1024) throw new Error('too_large');
-      const r = await this.assets.upload(new Blob([text], {type:'application/json'}), {type:'application/json'});
-      return {assetId: r.id};
-    }
-    if (this.kind === 'local'){ const id = 'season_' + Date.now().toString(36); await idbPut(this.idb, 'seasons', {id, text}); return {localId: id}; }
-    return {mem: obj};
+    if(this.kind==='cloud'){const path=this.uid+'/seasons/'+rid('season');const body=new Blob([JSON.stringify(obj)],{type:'application/json'});const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').upload(path,body,{contentType:'application/json',upsert:false});if(r.error)throw r.error;return {assetPath:path};}
+    if(this.kind==='local'){const id='season_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await idbPut(this.idb,'seasons',{id,text:JSON.stringify(obj)});return {localId:id};}
+    return {mem:obj};
   },
-  async getSeason(ref){
-    if (ref.mem) return ref.mem;
-    if (ref.assetId){ const r = await fetch('/_blob/' + ref.assetId); if (!r.ok) throw new Error('fetch ' + r.status); return r.json(); }
-    if (ref.localId){ const rec = await idbGet(this.idb, 'seasons', ref.localId); return rec ? JSON.parse(rec.text) : null; }
-    return null;
-  },
-  async delSeason(ref){ try { if (ref.assetId && this.assets) await this.assets.delete(ref.assetId); if (ref.localId) await idbDel(this.idb,'seasons',ref.localId); } catch(e){} },
-  async getDoc(id){ if (this.kind === 'cloud'){ const d = await this.col.doc(id).get(); return d.exists ? thaw(d.data()) : null; } if (this.kind === 'local'){ const r = await idbGet(this.idb, 'docs', id); return r ? r.data : null; } return MEM.has(id) ? clone(MEM.get(id)) : null; },
-  async putDoc(id, data){ const c = JSON.parse(JSON.stringify(data)); if (this.kind === 'cloud') return this.col.doc(id).set(c); if (this.kind === 'local') return idbPut(this.idb, 'docs', {id, data:c}); MEM.set(id, c); },
-  async delDoc(id){ try { if (this.kind === 'cloud') await this.col.doc(id).delete(); else if (this.kind === 'local') await idbDel(this.idb, 'docs', id); else MEM.delete(id); } catch(e){} },
-  urlCache: new Map(),
-  async putFile(blob, type){ type = type || blob.type; if (this.kind === 'cloud'){ const r = await this.assets.upload(blob, {type}); return {assetId:r.id}; } if (this.kind === 'local'){ const id = 'file_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); await idbPut(this.idb, 'files', {id, blob}); this.urlCache.set(id, URL.createObjectURL(blob)); return {localId:id}; } return {url:URL.createObjectURL(blob)}; },
-  async fileUrl(ref){ if (!ref) return ''; if (ref.assetId) return '/_blob/' + ref.assetId; if (ref.url) return ref.url; if (ref.localId){ if (this.urlCache.has(ref.localId)) return this.urlCache.get(ref.localId); const r = this.idb ? await idbGet(this.idb, 'files', ref.localId) : null; const u = r ? URL.createObjectURL(r.blob) : ''; this.urlCache.set(ref.localId, u); return u; } return ''; },
-  async fileBlob(ref){ if (!ref) return null; if (ref.assetId){ const r = await fetch('/_blob/' + ref.assetId); if (!r.ok) throw new Error('fetch ' + r.status); return r.blob(); } if (ref.localId){ const r = await idbGet(this.idb, 'files', ref.localId); return r ? r.blob : null; } if (ref.url){ const r = await fetch(ref.url); return r.blob(); } return null; },
-  async delFile(ref){ try { if (ref && ref.assetId && this.assets) await this.assets.delete(ref.assetId); else if (ref && ref.localId && this.idb) await idbDel(this.idb, 'files', ref.localId); } catch(e){} },
-  async usage(){ try { if (this.kind === 'cloud'){ const l = await this.assets.list(); return l.usage; } } catch(e){} return null; }
+  async getSeason(ref){if(ref&&ref.mem)return ref.mem;if(ref&&ref.assetPath){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').download(ref.assetPath);if(r.error)throw r.error;return JSON.parse(await r.data.text());}if(ref&&ref.localId){const x=await idbGet(this.idb,'seasons',ref.localId);return x?JSON.parse(x.text):null;}if(ref&&ref.assetId)throw new Error('Legacy cloud asset reference is not supported by this storage adapter.');return null;},
+  async delSeason(ref){try{if(ref&&ref.assetPath&&this.kind==='cloud'){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').remove([ref.assetPath]);if(r.error)throw r.error;}if(ref&&ref.localId&&this.idb)await idbDel(this.idb,'seasons',ref.localId);}catch(e){console.warn('Season cleanup failed',e);}},
+  async getDoc(id){if(this.kind==='cloud')return this._get('doc:'+id);if(this.kind==='local'){const r=await idbGet(this.idb,'docs',id);return r?r.data:null;}return MEM.has(id)?clone(MEM.get(id)):null;},
+  async putDoc(id,data){const c=JSON.parse(JSON.stringify(data));if(this.kind==='cloud')return this._put('doc:'+id,c);if(this.kind==='local')return idbPut(this.idb,'docs',{id,data:c});MEM.set(id,c);},
+  async delDoc(id){try{if(this.kind==='cloud')await this._del('doc:'+id);else if(this.kind==='local')await idbDel(this.idb,'docs',id);else MEM.delete(id);}catch(e){console.warn('Document delete failed',e);}},
+  async putFile(blob,type){type=type||blob.type||'application/octet-stream';if(this.kind==='cloud'){const path=this.uid+'/files/'+rid('file');const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').upload(path,blob,{contentType:type,upsert:false});if(r.error)throw r.error;return {assetPath:path};}if(this.kind==='local'){const id='file_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await idbPut(this.idb,'files',{id,blob});this.urlCache.set(id,URL.createObjectURL(blob));return {localId:id};}return {url:URL.createObjectURL(blob)};},
+  async fileUrl(ref){if(!ref)return '';if(ref.assetPath){const now=Date.now(),cached=this.urlCache.get(ref.assetPath);if(cached&&cached.until>now)return cached.url;const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').createSignedUrl(ref.assetPath,3600);if(r.error)throw r.error;this.urlCache.set(ref.assetPath,{url:r.data.signedUrl,until:now+3500000});return r.data.signedUrl;}if(ref.url)return ref.url;if(ref.localId){const c=this.urlCache.get(ref.localId);if(c)return c;const r=this.idb?await idbGet(this.idb,'files',ref.localId):null;const u=r?URL.createObjectURL(r.blob):'';this.urlCache.set(ref.localId,u);return u;}return '';},
+  async fileBlob(ref){if(!ref)return null;if(ref.assetPath){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').download(ref.assetPath);if(r.error)throw r.error;return r.data;}if(ref.localId){const r=await idbGet(this.idb,'files',ref.localId);return r?r.blob:null;}if(ref.url){const r=await fetch(ref.url);if(!r.ok)throw new Error('File fetch '+r.status);return r.blob();}return null;},
+  async delFile(ref){try{if(ref&&ref.assetPath&&this.kind==='cloud'){const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').remove([ref.assetPath]);if(r.error)throw r.error;}else if(ref&&ref.localId&&this.idb)await idbDel(this.idb,'files',ref.localId);}catch(e){console.warn('File cleanup failed',e);}},
+  async usage(){if(this.kind!=='cloud')return null;const r=await RL_SUPABASE.storage.from('recruitment-lab-assets').list(this.uid,{limit:1000});if(r.error)throw r.error;return r.data.length;}
 };
 function openIDB(){ return new Promise((res, rej) => { const r = indexedDB.open('recruitment-lab', 1);
   r.onupgradeneeded = () => { const d = r.result; ['saves','seasons','meta','docs','files'].forEach(n => { if (!d.objectStoreNames.contains(n)) d.createObjectStore(n, {keyPath:'id'}); }); };
@@ -6937,9 +6927,46 @@ async function rlCheckCloudSetup(){
     rlCloudMessage('Cloud setup check failed: ' + (e.message || 'unknown error') + '. Your local data is unaffected.', true);
   } finally { if (b) b.disabled = false; }
 }
+async function rlPreviewMigration(){
+  const status=$('rl-cloud-migration-status'), btn=$('rl-cloud-migrate');
+  const say=t=>{if(status)status.textContent=t;};
+  if(!RL_SUPABASE||!RL_AUTH_USER){say('Sign in to your private cloud account first.');return;}
+  let db=null;try{db=await openIDB();}catch(e){say('Local browser storage could not be opened: '+e.message);return;}
+  if(Store.kind==='cloud'||localStorage.getItem('rl-cloud-enabled')==='1'){say('This device is already configured for cloud storage.');return;}
+  btn.disabled=true;say('Checking cloud account and counting local records…');
+  try{
+    const q=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',RL_AUTH_USER.id).limit(1);
+    if(q.error)throw q.error;
+    if(q.data&&q.data.length){say('This cloud account already contains data. Automatic migration is blocked to prevent overwriting it.');return;}
+    const [saves,seasons,meta,docs,files]=await Promise.all([idbAll(db,'saves'),idbAll(db,'seasons'),idbAll(db,'meta'),idbAll(db,'docs'),idbAll(db,'files')]);
+    const total=saves.length+seasons.length+docs.length+files.length;
+    if(!total){say('No local Recruitment Lab data was found to migrate.');return;}
+    const summary='Found '+saves.length+' save(s), '+seasons.length+' season data file(s), '+docs.length+' document(s), '+files.length+' image/file(s), and '+meta.length+' metadata record(s). Copy this data to your signed-in cloud account? Local data will be kept unchanged.';
+    if(!confirm(summary)) {say('Migration cancelled. Local data is unchanged.');return;}
+    say('Copying files and season data. Keep this page open…');
+    const bucket=RL_SUPABASE.storage.from('recruitment-lab-assets'), uid=RL_AUTH_USER.id, refMap=new Map();
+    const upload=async(path,blob,type)=>{const x=await bucket.upload(path,blob,{contentType:type||blob.type||'application/octet-stream',upsert:false});if(x.error)throw x.error;return {assetPath:path};};
+    for(const x of seasons){const path=uid+'/seasons/mig_'+x.id+'.json';const ref=await upload(path,new Blob([x.text],{type:'application/json'}),'application/json');refMap.set(x.id,ref);}
+    for(const x of files){const path=uid+'/files/mig_'+x.id;const ref=await upload(path,x.blob,x.blob.type);refMap.set(x.id,ref);}
+    const remap=(v)=>{if(Array.isArray(v))return v.map(remap);if(v&&typeof v==='object'){if(typeof v.localId==='string'&&refMap.has(v.localId))return refMap.get(v.localId);const o={};for(const [k,z] of Object.entries(v))o[k]=remap(z);return o;}return v;};
+    const rows=[];
+    for(const x of saves)rows.push({user_id:uid,id:'save:'+x.id,data:remap(Object.fromEntries(Object.entries(x).filter(([k])=>k!=='id')))});
+    for(const x of docs)rows.push({user_id:uid,id:'doc:'+x.id,data:remap(x.data)});
+    for(const x of meta)rows.push({user_id:uid,id:'meta',data:x});
+    for(let i=0;i<rows.length;i+=100){const batch=rows.slice(i,i+100);const w=await RL_SUPABASE.from('rl_documents').insert(batch);if(w.error)throw w.error;}
+    const verify=await RL_SUPABASE.from('rl_documents').select('id').eq('user_id',uid);
+    if(verify.error)throw verify.error;
+    if((verify.data||[]).length!==rows.length)throw new Error('Verification count did not match the copied records. Do not delete local data; contact support before retrying.');
+    localStorage.setItem('rl-cloud-enabled','1');
+    say('Migration verified: '+rows.length+' database records copied. Your original local data remains intact. Reloading into cloud mode…');
+    setTimeout(()=>location.reload(),900);
+  }catch(e){console.error('Cloud migration failed',e);say('Migration stopped: '+(e.message||'unknown error')+'. Local data has not been deleted. If any cloud files were uploaded, they are harmless unused copies; do not retry until we inspect the account.');}
+  finally{btn.disabled=false;}
+}
 async function rlInitSupabase(){
   const signIn = $('rl-cloud-signin'), signUp = $('rl-cloud-signup'), signOut = $('rl-cloud-signout');
   const check = $('rl-cloud-check');
+  const migrate=$('rl-cloud-migrate'); if(migrate) migrate.onclick=rlPreviewMigration;
   if (check) check.onclick = rlCheckCloudSetup;
   if (!window.supabase || typeof window.supabase.createClient !== 'function'){
     rlCloudMessage('Cloud account library could not load. Local storage is still available.', true); return;
@@ -6999,7 +7026,7 @@ async function start(){
   $('loading').hidden = false; $('loading').textContent = 'Connecting to your library';
   const slow = setTimeout(() => { $('loading').textContent = 'Still connecting to your library. This can take up to 10 seconds.'; }, 3500);
   S.saves = []; S.save = null; S.season = null; S.seasonCache.clear(); JR.cache.clear(); CK.data.clear(); CK.proc.clear(); MG.doc = null; MG.loading = null;
-  await Store.init(); clearTimeout(slow); storeBadge(); mgr(); await rlInitSupabase();
+  await rlInitSupabase(); await Store.init(); clearTimeout(slow); storeBadge(); mgr();
   if (Store.kind !== 'cloud' && Store.why) libMsg('reach');
   $('loading').textContent = 'Loading your library';
   try { S.saves = await Store.listSaves(); } catch(e){ console.error(e); S.saves = []; libMsg('read', e && (e.code || e.message)); }
