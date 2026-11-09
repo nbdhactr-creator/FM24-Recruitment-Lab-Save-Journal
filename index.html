@@ -2808,6 +2808,32 @@ function tcPlayerMeta(p){
   return [p.club||'Club unknown',p.div||'Competition unknown',p.age==null?'Age —':'Age '+p.age,
     p.mins==null?'Minutes —':Math.round(p.mins).toLocaleString()+'m'].join(' · ');
 }
+async function openTeamComparisonPlayer(player){
+  if(!player)return;
+  const seasonLabel=S.season?.label||S.save?.currentSeason||'';
+  if(seasonLabel)SQ.season=seasonLabel;
+  const checkpoints=sortCks(S.save?.checkpoints||[]).filter(c=>c.ref&&c.season===SQ.season);
+  let profileKey=player.key;
+  const latest=checkpoints[checkpoints.length-1];
+  if(latest){
+    try{
+      const snapshot=await stdOf(latest,SQ.season);
+      let matches=[];
+      if(player.uid){
+        matches=snapshot.players.filter(p=>p.uid===player.uid);
+        if(matches.length>1){
+          const sameRow=matches.filter(p=>p.i===player.i&&norm(p.name)===norm(player.name)&&norm(p.club)===norm(player.club));
+          matches=sameRow;
+        }
+      }else{
+        matches=snapshot.players.filter(p=>norm(p.name)===norm(player.name)&&norm(p.club)===norm(player.club));
+      }
+      if(matches.length===1)profileKey=matches[0].key;
+    }catch(e){console.warn('Could not load matching player checkpoint',e);}
+  }
+  await openPlayer(profileKey,player);
+}
+
 async function renderTeamComparison(){
   const root=$('teamcompare-root'); if(!root || S.tab!=='teamcompare' || !S.season) return;
   await mgr(); if(S.tab!=='teamcompare') return;
@@ -2837,7 +2863,13 @@ async function renderTeamComparison(){
   const rolesWithBackup=depthRows.filter(d=>d.backup).length;
   const backupScores=depthRows.filter(d=>d.backup&&d.backup.score!=null).map(d=>d.backup.score);
   const avgBackup=backupScores.length?Math.round(backupScores.reduce((a,b)=>a+b,0)/backupScores.length):null;
-  const depthMarkup='<section class="panel" style="padding:16px 18px;margin-bottom:12px"><h2 style="margin-top:0">Tactical positional depth</h2><p class="hint">One best-XI assignment per slot, plus the strongest eligible backup and external market depth. Counts use the selected minimum-minute threshold. Best-XI assignments use each player once; eligible depth is role-specific and may include players who qualify for more than one role.</p><div class="ti-depth-cards" style="margin:12px 0 16px"><div><b>TACTICAL SLOTS</b><strong>'+depthRows.length+'</strong><small>Roles in the active tactic</small></div><div><b>STARTER WATCHLIST</b><strong>'+starterGaps+'</strong><small>No starter score or score below 55</small></div><div><b>ROLES WITH BACKUP</b><strong>'+rolesWithBackup+'</strong><small>Scored eligible second option</small></div><div><b>AVERAGE BACKUP SCORE</b><strong>'+(avgBackup==null?'—':avgBackup)+'</strong><small>'+(backupScores.length+' of '+depthRows.length+' roles assessed')+'</small></div></div><div class="tablewrap"><table><thead><tr><th>Slot / role</th><th>Assigned starter</th><th class="num">Starter score</th><th>Best backup</th><th class="num">Backup score</th><th class="num">Score gap</th><th class="num">Eligible depth</th><th class="num">Market candidates</th><th class="num">Best market score</th></tr></thead><tbody>'+depthRows.map(d=>{const gap=d.starter.sc!=null&&d.backup?d.starter.sc-d.backup.score:null;const quality=d.starter.sc==null?'No scored starter':d.starter.sc<55?'Starter watch':!d.backup?'No scored backup':gap<=5?'Strong cover':gap<=15?'Some drop-off':'Large drop-off';return '<tr><td><b>'+esc(SLOT_LABEL[d.slot.code])+'</b><small class="rl-sub" style="display:block">'+esc(roleTitle(d.slot.role))+'</small><small class="rl-sub" style="display:block">'+quality+'</small></td><td>'+(d.starter.p?esc(d.starter.p.name):'<span class="rl-sub">No assigned starter</span>')+'</td><td class="num">'+(d.starter.sc??'—')+'</td><td>'+(d.backup?esc(d.backup.p.name):'<span class="rl-sub">No scored backup</span>')+'</td><td class="num">'+(d.backup?d.backup.score:'—')+'</td><td class="num">'+(gap==null?'—':(gap>0?'+':'')+gap)+'</td><td class="num">'+d.depth+'</td><td class="num">'+d.marketCount+'</td><td class="num">'+(d.marketBest?d.marketBest.score:'—')+'</td></tr>';}).join('')+'</tbody></table></div><p class="hint" style="margin-bottom:0">Starter watch uses a role score below 55. Score gap is starter minus backup: a smaller gap means the backup is closer in quality. Depth count measures eligible options, while backup score measures the quality of the strongest second option. These are screening signals, not automatic transfer instructions.</p></section>';
+  const profileTargets=new Map();
+  const profileLink=p=>{
+    if(!p)return '<span class="rl-sub">—</span>';
+    const id=String(profileTargets.size);profileTargets.set(id,p);
+    return '<button type="button" data-tc-player="'+id+'" title="Open player profile" style="background:none;border:0;padding:0;color:var(--accent);font:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;text-align:left">'+esc(p.name||'Unknown player')+'</button>';
+  };
+  const depthMarkup='<section class="panel" style="padding:16px 18px;margin-bottom:12px"><h2 style="margin-top:0">Tactical positional depth</h2><p class="hint">One best-XI assignment per slot, plus the strongest eligible backup and external market depth. Counts use the selected minimum-minute threshold. Best-XI assignments use each player once; eligible depth is role-specific and may include players who qualify for more than one role.</p><div class="ti-depth-cards" style="margin:12px 0 16px"><div><b>TACTICAL SLOTS</b><strong>'+depthRows.length+'</strong><small>Roles in the active tactic</small></div><div><b>STARTER WATCHLIST</b><strong>'+starterGaps+'</strong><small>No starter score or score below 55</small></div><div><b>ROLES WITH BACKUP</b><strong>'+rolesWithBackup+'</strong><small>Scored eligible second option</small></div><div><b>AVERAGE BACKUP SCORE</b><strong>'+(avgBackup==null?'—':avgBackup)+'</strong><small>'+(backupScores.length+' of '+depthRows.length+' roles assessed')+'</small></div></div><div class="tablewrap"><table><thead><tr><th>Slot / role</th><th>Assigned starter</th><th class="num">Starter score</th><th>Best backup</th><th class="num">Backup score</th><th class="num">Score gap</th><th class="num">Eligible depth</th><th class="num">Market candidates</th><th class="num">Best market score</th></tr></thead><tbody>'+depthRows.map(d=>{const gap=d.starter.sc!=null&&d.backup?d.starter.sc-d.backup.score:null;const quality=d.starter.sc==null?'No scored starter':d.starter.sc<55?'Starter watch':!d.backup?'No scored backup':gap<=5?'Strong cover':gap<=15?'Some drop-off':'Large drop-off';return '<tr><td><b>'+esc(SLOT_LABEL[d.slot.code])+'</b><small class="rl-sub" style="display:block">'+esc(roleTitle(d.slot.role))+'</small><small class="rl-sub" style="display:block">'+quality+'</small></td><td>'+(d.starter.p?profileLink(d.starter.p):'<span class="rl-sub">No assigned starter</span>')+'</td><td class="num">'+(d.starter.sc??'—')+'</td><td>'+(d.backup?profileLink(d.backup.p):'<span class="rl-sub">No scored backup</span>')+'</td><td class="num">'+(d.backup?d.backup.score:'—')+'</td><td class="num">'+(gap==null?'—':(gap>0?'+':'')+gap)+'</td><td class="num">'+d.depth+'</td><td class="num">'+d.marketCount+'</td><td class="num">'+(d.marketBest?d.marketBest.score:'—')+'</td></tr>';}).join('')+'</tbody></table></div><p class="hint" style="margin-bottom:0">Starter watch uses a role score below 55. Score gap is starter minus backup: a smaller gap means the backup is closer in quality. Depth count measures eligible options, while backup score measures the quality of the strongest second option. These are screening signals, not automatic transfer instructions.</p></section>';
   const scored=players.filter(p=>eligible(p)&&p.mins>=TC.minM).map(p=>({p,score:roleScore(p,selectedRole),ph:philoOf(p,selectedRole)?.v})).filter(x=>x.score!=null).sort((a,b)=>b.score-a.score);
   const incumbent=scored[0]||null;
   const query=norm(TC.q);
@@ -2860,6 +2892,7 @@ async function renderTeamComparison(){
   '<p class="hint">'+market.length+' candidates with a usable role score across '+new Set(market.map(x=>x.p.club+'|'+x.p.div)).size+' club/competition groups. Showing '+visible.length+'. Missing values remain blank; no affordability claim is made.</p>'+
   '<div class="tablewrap"><table><thead><tr><th>#</th><th>Player / club</th><th class="num">Role score</th><th>Philosophy</th><th class="num">Δ vs incumbent</th><th class="num">Age</th><th class="num">Minutes</th><th>Value</th><th>Wage</th><th>Contract</th></tr></thead><tbody>'+(candidateRows||'<tr><td colspan="10" class="empty">No candidates match this role and filter.</td></tr>')+'</tbody></table></div>'+
   '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px"><span class="hint">Full list available; increase the result limit to inspect more.</span><div class="field"><label for="tc-limit">Results shown</label><select id="tc-limit"><option value="50"'+(TC.limit===50?' selected':'')+'>50</option><option value="100"'+(TC.limit===100?' selected':'')+'>100</option><option value="250"'+(TC.limit===250?' selected':'')+'>250</option><option value="999999"'+(TC.limit===999999?' selected':'')+'>All</option></select></div></div></section>';
+  root.querySelectorAll('[data-tc-player]').forEach(b=>b.onclick=()=>openTeamComparisonPlayer(profileTargets.get(b.dataset.tcPlayer)));
   const club=$('tc-club'); if(club)club.onchange=()=>{TC.focus=club.value;renderTeamComparison();};
   const role=$('tc-role');if(role)role.onchange=()=>{TC.role=role.value;renderTeamComparison();};
   const mins=$('tc-mins');if(mins)mins.onchange=()=>{TC.minM=Math.max(0,num(mins.value)||0);renderTeamComparison();};
@@ -4822,7 +4855,7 @@ function bindSquad(root){
 
 /* ---------- player history ---------- */
 let plKey = null;
-async function openPlayer(key){
+async function openPlayer(key, fallbackPlayer=null){
   plKey = key; const s = S.save; const all = sortCks(s.checkpoints).filter(c => c.ref); const cks = all.filter(c => c.season === SQ.season);
   const cols = []; // [{label, p}]
   for (let i = 0; i < cks.length; i++){ const b = await blockOf(cks, i, SQ.season); cols.push({label:blockLabel(cks, i), sub:cks[i].label, p:b.byKey.get(key)}); }
@@ -4830,6 +4863,8 @@ async function openPlayer(key){
   cols.push({label:'Season to date', sub:SQ.season, p:me, std:true});
   const otherSeasons = [...new Set(all.map(c => c.season))].filter(x => x !== SQ.season).sort();
   for (const se of otherSeasons){ const lc = all.filter(c => c.season === se).pop(); const st = await stdOf(lc, se); const p = st.byKey.get(key); if (p) cols.push({label:se, sub:'Full record', p}); }
+  if (!cols.some(c => c.p) && fallbackPlayer) cols.push({label:'Current dataset',sub:S.season?.label||'Current season',p:fallbackPlayer});
+  else if (!me && fallbackPlayer) cols.push({label:'Current dataset',sub:S.season?.label||'Current season',p:fallbackPlayer});
   const any = cols.find(c => c.p) ; if (!any){ toast('No stats for that player in these checkpoints'); return; }
   const base = me || any.p; const pr = profOf(base); const b = BP_BY[pr]; const role = roleFor(base, pr);
   $('pl-title').textContent = base.name; $('pl-sub').textContent = `${base.age != null ? base.age + ', ' : ''}${base.pos || ''}${base.hg && base.hg !== '-' ? ' · ' + base.hg : ''}${base.uid ? ' · UID ' + base.uid : ' · No FM UID'} · ${base.identityType === 'fm-uid' ? 'UID-tracked' : base.identityType === 'name-club-fallback' ? 'Name + club fallback' : base.identityType === 'duplicate-fm-uid' ? 'Duplicate UID · isolated record' : 'Ambiguous fallback · isolated record'}`;
