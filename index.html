@@ -1636,7 +1636,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <div class="tpill" id="adjpill" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false"><i class="dot"></i><span class="ptxt" id="adjtxt">Raw numbers</span>
     <div class="adjpop" id="adjpop" hidden>
       <label class="check"><input type="checkbox" id="adj"><span>Adjust per-90 output for league strength</span></label>
-      <p id="adjhelp">Uses the Recruitment Lab tier framework, relative to your selected home league. Every eligible per-90 volume statistic is adjusted before percentiles and role scores. Unknown competitions remain raw and are flagged in League Intelligence; they are never silently assigned an equal-strength multiplier. Percentages and efficiency rates are not scaled.</p>
+      <p id="adjhelp">Uses the Recruitment Lab tier framework, relative to your selected home league. Every eligible per-90 volume statistic is adjusted before percentiles and role scores. Unclassified competitions are excluded from adjusted per-90 rankings and flagged in League Intelligence; they are never silently assigned an equal-strength multiplier. Percentages and efficiency rates are not scaled.</p>
     </div>
   </div>
 </header>
@@ -1917,7 +1917,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         </div>
         <p class="hint" id="lgsummary" style="margin:8px 0 10px"></p>
         <div class="tablewrap"><table><thead><tr><th>Competition</th><th>Recruitment tier</th><th>Relative tier</th><th class="num">Players</th><th>Data coverage</th><th class="num">Auto multiplier</th><th>Manual override</th></tr></thead><tbody id="lgbody"></tbody></table></div>
-        <p class="hint" style="margin:10px 0 0">Multipliers are based on your saved tier framework and are relative to your selected home league (so your own league is 1.00). Manual overrides are relative multipliers for that competition; leave blank to restore automatic mapping. Unclassified competitions stay raw in adjusted views and are flagged rather than assumed equal to your league. “No detected gaps” means the import check found no league-wide missing advanced-stat groups; it does not guarantee complete data.</p>
+        <p class="hint" style="margin:10px 0 0">Multipliers are based on your saved tier framework and are relative to your selected home league (so your own league is 1.00). Manual overrides are relative multipliers for that competition; leave blank to restore automatic mapping. Unclassified competitions are excluded from adjusted per-90 rankings and flagged rather than assumed equal to your league. “No detected gaps” means the import check found no league-wide missing advanced-stat groups; it does not guarantee complete data.</p>
       </div>
     </div>
   </section>
@@ -4093,7 +4093,7 @@ function renderLeagues(){
     const coverage = lim[l.d]
       ? `<span class="limtag" title="Missing groups: ${esc(groups.join(', '))}">${warn_icon()}Limited · ${groups.length} groups</span>`
       : '<span class="pclub">No detected gaps</span>';
-    const note = custom != null ? 'Manual relative multiplier.' : (automatic == null ? 'Unmapped: adjusted view keeps raw statistics.' : 'Automatic tier mapping.');
+    const note = custom != null ? 'Manual relative multiplier.' : (automatic == null ? 'Unmapped: excluded from adjusted per-90 rankings; use Raw numbers to include them.' : 'Automatic tier mapping.');
     const autoText = automatic == null ? '—' : automatic.toFixed(2);
     return `<tr${l.d===my?' class="myl"':''}><td><span class="pname">${esc(l.d)}</span>${l.d===my?'<div class="pclub">Your league</div>':''}</td><td>${l.tier == null ? '<span class="lvl b-2">Unclassified</span>' : esc(tierText(l.tier))}<div class="pclub">${l.rep ? `FM24 reference: ${starsTxt(l.rep.stars)}` : 'No separate reputation reference'}</div></td><td>${esc(relative)}</td><td class="num">${l.n.toLocaleString()}</td><td>${coverage}</td><td class="num" title="Tier multiplier relative to your selected home league; blank means no automatic mapping.">${autoText}</td><td><label class="sr" for="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}">Manual relative multiplier for ${esc(l.d)}</label><input id="lg-factor-${esc(norm(l.d).replace(/[^a-z0-9]+/g,'-'))}" data-league-factor="${esc(norm(l.d))}" type="number" min="0.25" max="3" step="0.01" value="${custom != null ? esc(custom) : ''}" placeholder="Auto" title="Automatic: ${autoText}. Enter a relative multiplier from 0.25–3.00 or leave blank for automatic." style="width:82px;min-width:72px"><div class="pclub">${esc(note)}</div></td></tr>`;
   }).join('');
