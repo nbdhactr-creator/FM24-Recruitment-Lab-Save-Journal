@@ -6138,7 +6138,7 @@ function renderDof(){ const root = $('dof-root'); if (!root || !S.season || S.ta
     <div class="dof-board">${cols}</div>
     ${dofPriorityHtml()}
     <details class="panel dof-excluded"><summary>Excluded candidates · ${res.left.length} with filter conflicts</summary><div class="dof-excluded-list">${res.left.map(x => `<div class="rl-row"><span style="min-width:0"><b>${esc(x.o.p.name)}</b><span class="rl-sub">${esc(x.o.p.club)} · ${esc(x.o.p.pos)} · score ${x.o.sc}</span></span><span class="rl-sub" style="text-align:right;max-width:55%">${esc(x.r.join(' · '))}</span><button class="btn" type="button" data-open="${esc(x.o.p.key)}">Open</button></div>`).join('') || '<p class="rl-empty">No candidates were excluded by the current filters.</p>'}</div></details><p class="dof-foot">${res.ranked.length.toLocaleString()} eligible candidates ranked for ${esc(roleShort(role))} across ${S.season.leagues.length} leagues, including the search positions in your Philosophy. Excluded candidates remain visible above with their reasons.</p>`;
-  root.classList.toggle('fitgrow', DOF.more);
+  root.classList.add('fitgrow');
   if (!DOF.bound){ DOF.bound = true; bindDof(root); }
 }
 function dofFilterCount(c){ return ['ageMin','ageMax'].filter(k => num(c[k]) != null).length + (c.lvl && c.lvl !== 'any' ? 1 : 0) + (c.conf ? 1 : 0) + (c.contract ? 1 : 0); }
