@@ -3112,12 +3112,68 @@ function pctIn(v, sorted, dir){
   const p = (below + 0.5*(lo - below)) / n * 100; return dir < 0 ? 100 - p : p;
 }
 function statPct(p, key, st){ if (!floorOK(p, key)) return null; return pctIn(statVal(p, key), sortedPool(st, key), dirOf(key)); }
+/* Role-score model v2: correlated indicators are grouped into evidence families.
+   A family contributes only its strongest configured weight, not the sum of every
+   overlapping statistic. Within a family, available indicators are averaged.
+   This limits double-counting while retaining distinct dimensions of a role. */
+const ROLE_STAT_FAMILIES = {
+  chance_creation:['OP-KP/90','K Ps/90','Ch C/90','CCC/90','xA/90','Asts/90','npxG+xA/90','G+A np/90','A-xA/90','xA/KP','OP-KP share'],
+  shot_threat:['npxG/90','xG/90','Shot/90','ShT/90','Shots Outside Box/90'],
+  goal_output:['Non-pen G/90','Gls/90'],
+  finishing_efficiency:['npG-npxG/90','npxG/Shot','G/SoT','Shot %','Conv %','Pen conv','Long-shot share'],
+  progression:['Pr passes/90','Prog/90','Verticality','FA/90'],
+  dribbling:['Drb/90'],
+  passing_volume:['Ps A/90','Ps C/90'],
+  possession_security:['Pas %','Loss rate','Passes per loss','Poss Lost/90'],
+  ball_winning:['Tck W/90','Tck/90','TklW+Int/90','Poss Won/90','Int/90','K Tck/90'],
+  tackle_quality:['Tck R','K Tck share','Fls/Tck'],
+  aerial_volume:['Hdrs W/90','K Hdrs/90','Aer A/90'],
+  aerial_quality:['Hdr %','K Hdr share','Hdrs L/90'],
+  pressing_volume:['Pres A/90','Pres/km'],
+  pressing_outcome:['Pres C/90','Press success'],
+  crossing_volume:['OP-Crs C/90','OP-Crs A/90','Cr C/90'],
+  crossing_quality:['OP-Cr %','Cr C/A'],
+  box_defence:['Box def/90','Clr/90','Blk/90','Shts Blckd/90','Def actions/90'],
+  physical_engine:['Sprints/90','Dist/90 km','Sprints/km'],
+  goalkeeper_shot_stopping:['xGP/90','Save %','Con/90'],
+  goalkeeper_claiming:['Catch rate'],
+  goalkeeper_clean_sheets:['CS/Start'],
+  goalkeeper_distribution:['Pas %','Ps A/90','Pr passes/90'],
+  goalkeeper_sweeping:['Int/90','Poss Won/90'],
+  goalkeeper_penalties:['Pen save %']
+};
+const ROLE_STAT_FAMILY = new Map();
+for (const [family, keys] of Object.entries(ROLE_STAT_FAMILIES)) for (const key of keys) {
+  if (!ROLE_STAT_FAMILY.has(key)) ROLE_STAT_FAMILY.set(key, family);
+}
+function roleFamilyOf(key){ return ROLE_STAT_FAMILY.get(key) || ('single:' + key); }
 function roleScore(p, role){
-  const ck = role.id + '|' + adjSig() + (NODEF ? '|nd' : ''); let m = scoreCache.get(ck); if (!m){ m = new Map(); scoreCache.set(ck, m); }
+  const ck = 'v2|' + role.id + '|' + adjSig() + (NODEF ? '|nd' : '');
+  let m = scoreCache.get(ck); if (!m){ m = new Map(); scoreCache.set(ck, m); }
   if (m.has(p.i)) return m.get(p.i);
-  let sw = 0, tw = 0, acc = 0;
-  for (const [k, w] of Object.entries(role.w)){ tw += w; const q = statPct(p, k, role.strata); if (q != null){ acc += q * w; sw += w; } }
-  const sc = (tw && sw / tw >= 0.6) ? Math.round(acc / sw) : null;
+  const families = new Map();
+  for (const [key, weight] of Object.entries(role.w)) {
+    const family = roleFamilyOf(key);
+    if (!families.has(family)) families.set(family, []);
+    families.get(family).push({key, weight, pct:statPct(p, key, role.strata)});
+  }
+  let totalFamilyWeight = 0, availableFamilyWeight = 0, weightedScore = 0;
+  let coreWeight = -Infinity, coreAvailable = false;
+  for (const entries of families.values()) {
+    const familyWeight = Math.max(...entries.map(x => x.weight));
+    totalFamilyWeight += familyWeight;
+    const available = entries.filter(x => x.pct != null);
+    if (familyWeight > coreWeight){ coreWeight = familyWeight; coreAvailable = available.length > 0; }
+    if (!available.length) continue;
+    const familyScore = available.reduce((sum, x) => sum + x.pct * x.weight, 0) /
+      available.reduce((sum, x) => sum + x.weight, 0);
+    availableFamilyWeight += familyWeight;
+    weightedScore += familyScore * familyWeight;
+  }
+  // The most heavily weighted evidence family is a defining requirement: if its
+  // data is unavailable, don't let unrelated strengths manufacture a role fit.
+  const sc = (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
+    ? Math.round(weightedScore / availableFamilyWeight) : null;
   m.set(p.i, sc); return sc;
 }
 function topStats(role, n){ return Object.entries(role.w).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
