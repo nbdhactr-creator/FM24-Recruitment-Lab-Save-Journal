@@ -5519,8 +5519,28 @@ function gPool(season, st, key){ const ck = season.label + '|' + st + '|' + key 
   a = season.players.filter(p => inStrata(p, st) && p.mins >= (season.poolMin || POOL_MIN) && floorOK(p, key) && !(defOut(st) && isDefListed(p))).map(p => statVal(p, key)).filter(v => v != null).sort((x, y) => x - y); GP.set(ck, a); return a; }
 function gPct(season, p, key, st){ if (season === S.season) return statPct(p, key, st); if (!floorOK(p, key)) return null; return pctIn(statVal(p, key), gPool(season, st, key), dirOf(key)); }
 function roleScoreIn(season, p, role){ if (season === S.season) return roleScore(p, role);
-  let sw = 0, tw = 0, acc = 0; for (const [k, w] of Object.entries(role.w)){ tw += w; const q = gPct(season, p, k, role.strata); if (q != null){ acc += q * w; sw += w; } }
-  return (tw && sw / tw >= 0.6) ? Math.round(acc / sw) : null; }
+  const families = new Map();
+  for (const [key, weight] of Object.entries(role.w)) {
+    const family = roleFamilyOf(key);
+    if (!families.has(family)) families.set(family, []);
+    families.get(family).push({key, weight, pct:gPct(season, p, key, role.strata)});
+  }
+  let totalFamilyWeight = 0, availableFamilyWeight = 0, weightedScore = 0;
+  let coreWeight = -Infinity, coreAvailable = false;
+  for (const entries of families.values()) {
+    const familyWeight = Math.max(...entries.map(x => x.weight));
+    totalFamilyWeight += familyWeight;
+    const available = entries.filter(x => x.pct != null);
+    if (familyWeight > coreWeight){ coreWeight = familyWeight; coreAvailable = available.length > 0; }
+    else if (familyWeight === coreWeight && available.length) coreAvailable = true;
+    if (!available.length) continue;
+    const familyScore = available.reduce((sum, x) => sum + x.pct * x.weight, 0) /
+      available.reduce((sum, x) => sum + x.weight, 0);
+    availableFamilyWeight += familyWeight;
+    weightedScore += familyScore * familyWeight;
+  }
+  return (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
+    ? Math.round(weightedScore / availableFamilyWeight) : null; }
 
 /* ---------- small-sample shrinkage and confidence ---------- */
 function shrinkOn(){ const el = $('shrink'); return !!(el && el.checked); }
