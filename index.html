@@ -1002,6 +1002,7 @@ details.jsec>summary .meta .tag.shared{border-color:var(--line2);color:var(--ink
 th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{color:var(--ink)}
 th.sortable.on{color:var(--ink)}
+.sortable.on[data-sort-dir="asc"]::after{content:" ↑"}
 th.sortable.on::after{content:" ▾"}
 .pstable td{vertical-align:middle}
 .ixc{min-width:64px}
@@ -3310,7 +3311,7 @@ function roleSortValue(d, key){
   if (key === 'score') return d.sc;
   if (key === 'x') return d.x;
   if (key === 'y') return d.y;
-  if (key === 'contract') { const m = String(d.p.expires || '').match(/(\\d{4})$/); return m ? +m[1] : null; }
+  if (key === 'contract') { const m = String(d.p.expires || '').match(/(\d{4})$/); return m ? +m[1] : null; }
   if (key === 'value') return d.p.val;
   return null;
 }
@@ -3327,8 +3328,8 @@ function sortRoleRows(rows){
   return rows;
 }
 function roleSortHead(key, label, cls=''){
-  const active = ROLE_SORT.key === key, arrow = active ? (ROLE_SORT.dir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
-  return `<th class="sortable${cls ? ' ' + cls : ''}${active ? ' on' : ''}" data-role-sort="${key}" tabindex="0" role="button" aria-label="Sort by ${label}, ${active ? ROLE_SORT.dir === 'asc' ? 'ascending' : 'descending' : 'not sorted'}">${label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></th>`;
+  const active = ROLE_SORT.key === key;
+  return `<th class="sortable${cls ? ' ' + cls : ''}${active ? ' on' : ''}" data-role-sort="${key}" data-sort-dir="${active ? ROLE_SORT.dir : ''}" tabindex="0" role="button" aria-label="Sort by ${label}, ${active ? ROLE_SORT.dir === 'asc' ? 'ascending' : 'descending' : 'not sorted'}">${label}</th>`;
 }
 $('thead').addEventListener('click', e => {
   const h = e.target.closest('[data-role-sort]'); if (!h) return;
