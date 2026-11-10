@@ -3148,15 +3148,12 @@ for (const [family, keys] of Object.entries(ROLE_STAT_FAMILIES)) for (const key 
   if (!ROLE_STAT_FAMILY.has(key)) ROLE_STAT_FAMILY.set(key, family);
 }
 function roleFamilyOf(key){ return ROLE_STAT_FAMILY.get(key) || ('single:' + key); }
-function roleScore(p, role){
-  const ck = 'v2|' + role.id + '|' + adjSig() + (NODEF ? '|nd' : '');
-  let m = scoreCache.get(ck); if (!m){ m = new Map(); scoreCache.set(ck, m); }
-  if (m.has(p.i)) return m.get(p.i);
+function roleFamilyScore(role, percentileFor){
   const families = new Map();
   for (const [key, weight] of Object.entries(role.w)) {
     const family = roleFamilyOf(key);
     if (!families.has(family)) families.set(family, []);
-    families.get(family).push({key, weight, pct:statPct(p, key, role.strata)});
+    families.get(family).push({weight, pct:percentileFor(key)});
   }
   let totalFamilyWeight = 0, availableFamilyWeight = 0, weightedScore = 0;
   let coreWeight = -Infinity, coreAvailable = false;
@@ -3172,10 +3169,15 @@ function roleScore(p, role){
     availableFamilyWeight += familyWeight;
     weightedScore += familyScore * familyWeight;
   }
-  // The most heavily weighted evidence family is a defining requirement: if its
-  // data is unavailable, don't let unrelated strengths manufacture a role fit.
-  const sc = (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
+  // Require data for at least one highest-weight family and 60% of total family weight.
+  return (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
     ? Math.round(weightedScore / availableFamilyWeight) : null;
+}
+function roleScore(p, role){
+  const ck = 'v2|' + role.id + '|' + adjSig() + (NODEF ? '|nd' : '');
+  let m = scoreCache.get(ck); if (!m){ m = new Map(); scoreCache.set(ck, m); }
+  if (m.has(p.i)) return m.get(p.i);
+  const sc = roleFamilyScore(role, key => statPct(p, key, role.strata));
   m.set(p.i, sc); return sc;
 }
 function topStats(role, n){ return Object.entries(role.w).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
@@ -5012,7 +5014,7 @@ function rawPool(st, key, scope){
   POOLC.set(ck, a); return a;
 }
 function sqPct(p, key, st, scope){ if (!S.season || !bpFloorOK(p, key)) return null; return pctIn(bpVal(p, key), rawPool(st, key, scope), bpDir(key)); }
-function sqScore(p, role, scope){ if (!S.season || !role || !p) return null; let sw = 0, tw = 0, acc = 0; for (const [k, w] of Object.entries(role.w)){ tw += w; const q = sqPct(p, k, role.strata, scope); if (q != null){ acc += q * w; sw += w; } } return (tw && sw / tw >= 0.6) ? Math.round(acc / sw) : null; }
+function sqScore(p, role, scope){ if (!S.season || !role || !p) return null; return roleFamilyScore(role, key => sqPct(p, key, role.strata, scope)); }
 function tierOf(row, v){
   if (v == null || !row[4]) return 'na'; const dir = row[5], E = row[6], G = row[7], F = row[8];
   if (dir > 0){ if (v >= E) return 'elite'; if (G != null && v >= G) return 'good'; if (F != null && v >= F) return 'floor'; return 'below'; }
@@ -5519,28 +5521,7 @@ function gPool(season, st, key){ const ck = season.label + '|' + st + '|' + key 
   a = season.players.filter(p => inStrata(p, st) && p.mins >= (season.poolMin || POOL_MIN) && floorOK(p, key) && !(defOut(st) && isDefListed(p))).map(p => statVal(p, key)).filter(v => v != null).sort((x, y) => x - y); GP.set(ck, a); return a; }
 function gPct(season, p, key, st){ if (season === S.season) return statPct(p, key, st); if (!floorOK(p, key)) return null; return pctIn(statVal(p, key), gPool(season, st, key), dirOf(key)); }
 function roleScoreIn(season, p, role){ if (season === S.season) return roleScore(p, role);
-  const families = new Map();
-  for (const [key, weight] of Object.entries(role.w)) {
-    const family = roleFamilyOf(key);
-    if (!families.has(family)) families.set(family, []);
-    families.get(family).push({key, weight, pct:gPct(season, p, key, role.strata)});
-  }
-  let totalFamilyWeight = 0, availableFamilyWeight = 0, weightedScore = 0;
-  let coreWeight = -Infinity, coreAvailable = false;
-  for (const entries of families.values()) {
-    const familyWeight = Math.max(...entries.map(x => x.weight));
-    totalFamilyWeight += familyWeight;
-    const available = entries.filter(x => x.pct != null);
-    if (familyWeight > coreWeight){ coreWeight = familyWeight; coreAvailable = available.length > 0; }
-    else if (familyWeight === coreWeight && available.length) coreAvailable = true;
-    if (!available.length) continue;
-    const familyScore = available.reduce((sum, x) => sum + x.pct * x.weight, 0) /
-      available.reduce((sum, x) => sum + x.weight, 0);
-    availableFamilyWeight += familyWeight;
-    weightedScore += familyScore * familyWeight;
-  }
-  return (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
-    ? Math.round(weightedScore / availableFamilyWeight) : null; }
+  return roleFamilyScore(role, key => gPct(season, p, key, role.strata)); }
 
 /* ---------- small-sample shrinkage and confidence ---------- */
 function shrinkOn(){ const el = $('shrink'); return !!(el && el.checked); }
@@ -5690,8 +5671,8 @@ function agePool(st, key){ const ck = 'p|' + st + '|' + key + '|' + PR.maxAge + 
   PRC.set(ck, a); return a; }
 // Role score with every stat ranked against his age group instead of the whole position
 function ageScoreRaw(p, role){ const ck = 's|' + role.id + '|' + p.i + '|' + PR.maxAge + '|' + prMin() + '|' + adjSig(); if (PRC.has(ck)) return PRC.get(ck);
-  let sw = 0, tw = 0, acc = 0; for (const [k, w] of Object.entries(role.w)){ tw += w; if (!floorOK(p, k)) continue; const q = pctIn(statVal(p, k), agePool(role.strata, k), dirOf(k)); if (q != null){ acc += q * w; sw += w; } }
-  const v = (tw && sw / tw >= 0.6) ? Math.round(acc / sw) : null; PRC.set(ck, v); return v; }
+  const v = roleFamilyScore(role, key => { if (!floorOK(p, key)) return null; return pctIn(statVal(p, key), agePool(role.strata, key), dirOf(key)); });
+  PRC.set(ck, v); return v; }
 // Typical score of the age group, used as the anchor for kinder shrinkage
 function ageMedian(role){ const ck = 'm|' + role.id + '|' + PR.maxAge + '|' + prMin() + '|' + adjSig(); if (PRC.has(ck)) return PRC.get(ck);
   const m = median(S.season.players.filter(p => inStrata(p, role.strata) && p.age != null && p.age <= PR.maxAge && (p.mins || 0) >= prMin()).map(p => roleScore(p, role)).filter(v => v != null)); PRC.set(ck, m == null ? 50 : m); return PRC.get(ck); }
