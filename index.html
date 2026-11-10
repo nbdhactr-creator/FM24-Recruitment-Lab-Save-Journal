@@ -3164,6 +3164,7 @@ function roleScore(p, role){
     totalFamilyWeight += familyWeight;
     const available = entries.filter(x => x.pct != null);
     if (familyWeight > coreWeight){ coreWeight = familyWeight; coreAvailable = available.length > 0; }
+    else if (familyWeight === coreWeight && available.length) coreAvailable = true;
     if (!available.length) continue;
     const familyScore = available.reduce((sum, x) => sum + x.pct * x.weight, 0) /
       available.reduce((sum, x) => sum + x.weight, 0);
