@@ -5626,7 +5626,23 @@ function shrinkOn(){ const el = $('shrink'); return !!(el && el.checked); }
 // Below 2,000 minutes a score is pulled toward the pool median (50) in proportion to how little he has played
 function shrinkW(m, pr){ return Math.min(1, Math.sqrt(Math.max(0, m || 0) / confHi(pr))); }
 function shrinkV(v, m, pr){ return v == null ? null : Math.round(50 + (v - 50) * shrinkW(m, pr)); }
-function dispScore(p, role){ const sc = roleScore(p, role); return shrinkOn() ? shrinkV(sc, p.mins) : sc; }
+/* DoF defensive evaluation: keep the role score dominant, then add a small aerial-dominance signal.
+   Aerial quality (Hdr %) must be present alongside aerial output (headers won / key headers won).
+   Missing aerial data never disqualifies a player or weakens the role's core score. */
+function dofAerialScore(p, role){
+  if (!role || !['DC','DLR','WB','DM'].includes(role.strata)) return null;
+  const quality = statPct(p, 'Hdr %', role.strata);
+  const wins = ['Hdrs W/90','K Hdrs/90'].map(k => statPct(p, k, role.strata)).filter(v => v != null);
+  if (quality == null || !wins.length) return null;
+  const volume = wins.reduce((a,b) => a+b, 0) / wins.length;
+  return Math.round((quality + volume) / 2);
+}
+function dofEvaluationScore(p, role, coreScore){
+  if (coreScore == null) return null;
+  const aerial = dofAerialScore(p, role);
+  return aerial == null ? coreScore : Math.round(coreScore * 0.9 + aerial * 0.1);
+}
+function dispScore(p, role){ const sc = dofEvaluationScore(p, role, roleScore(p, role)); return shrinkOn() ? shrinkV(sc, p.mins) : sc; }
 function confOf(p, pr){ const m = p.mins || 0; return m >= confHi(pr) ? 3 : m >= confMid(pr) ? 2 : 1; }
 function confHtml(p){ const c = confOf(p), t = ['', 'Low', 'Medium', 'High'][c]; return `<span class="conf c${c}" title="${t} confidence: ${Math.round(p.mins || 0).toLocaleString()} minutes (high from ${confHi().toLocaleString()}, medium from ${confMid().toLocaleString()}${curProg() < 1 ? ', scaled for a ' + PROG_SHORT[curProg()] : ''})"><i></i><i></i><i></i><span class="sr">${t} confidence</span></span>`; }
 /* ---------- feasibility: a stronger current league plus an ambitious personality ---------- */
@@ -6117,7 +6133,7 @@ function dofPicks(ctx){ const role = ctx.role, c = dofCfg(), B = dofBudget() * 1
     if (c.contract && !(p.expY != null && p.expY <= +c.contract + 0.1)) r.push('contract runs past your filter');
     return r; };
   const scored = S.season.players.filter(p => p.club !== my && (p.mins || 0) >= POOL_MIN && posOK(p, role, ex)).map(p => ({p, sc:dispScore(p, role)})).filter(o => o.sc != null);
-  const dec = o => Object.assign(o, {ph:philo(o.p, role), st:steps(o.p), conf:confOf(o.p)});
+  const dec = o => Object.assign(o, {ph:philo(o.p, role), aer:dofAerialScore(o.p, role), st:steps(o.p), conf:confOf(o.p)});
   const el = scored.filter(o => !blockers(o.p).length).map(dec);
   const picked = new Set(), take = (arr, n) => { const out = []; for (const o of arr){ if (out.length >= n) break; if (picked.has(o.p.key)) continue; picked.add(o.p.key); out.push(o); } return out; };
   const bySc = (a, b) => (b.sc - a.sc) || ((b.ph ?? 0) - (a.ph ?? 0));
@@ -6129,7 +6145,7 @@ function dofPicks(ctx){ const role = ctx.role, c = dofCfg(), B = dofBudget() * 1
   const val = take(el.filter(o => o.p.val <= vCap && o.conf >= 2 && o.sc >= base + 3).sort((a, b) => ratio(b) - ratio(a)), Infinity);
   const squad = take(el.filter(o => o.st != null && o.st >= 0 && o.conf >= 3 && o.p.age >= 23 && o.p.age <= 31 && o.p.val <= sCap && o.sc >= base - 10).sort(bySc), Infinity);
   const pros = S.season.players.filter(p => p.club !== my && p.age != null && p.age <= 21 && (p.mins || 0) >= prMin() && posOK(p, role, ex) && !blockers(p).length)
-    .map(p => ({p, sc:ageScore(p, role), all:roleScore(p, role)})).filter(o => o.sc != null).map(dec).sort((a, b) => b.sc - a.sc);
+    .map(p => ({p, sc:dofEvaluationScore(p, role, ageScore(p, role)), all:roleScore(p, role)})).filter(o => o.sc != null).map(dec).sort((a, b) => b.sc - a.sc);
   const pro = take(pros, Infinity);
   const ranked = el.slice().sort(bySc), left = scored.filter(o => !picked.has(o.p.key)).map(o => ({o, r:blockers(o.p)})).filter(x => x.r.length).sort((a, b) => b.o.sc - a.o.sc);
   const out = {base, vCap, sCap, dMin, cols:{dream, upg, val, squad, pro}, ranked, left, n:scored.length}; DOFC.set(ck, out); return out; }
@@ -6149,6 +6165,7 @@ function dofWhy(cat, o, ctx, res){ const p = o.p, role = ctx.role, sn = ctx.star
 function dofFlags(cat, o, role){ const p = o.p, f = [];
   const rf = retrainFrom(p, role); if (rf) f.push(`<span class="rl-chip out" title="Not listed at ${esc(ST_SHORT[role.strata])}">Retrain · ${esc(rf)}</span>`);
   const fz = feasOf(p); if (fz && fz.lvl === 'hard') f.push(`<span class="rl-chip neu">Big step down for him</span>`); if (fz && fz.lvl === 'refuse') f.push(`<span class="rl-chip down">${warn_icon()}Likely to refuse</span>`);
+  if (o.aer != null){ const b = o.aer >= 70 ? 'up' : o.aer < 40 ? 'down' : 'neu'; f.push(`<span class="rl-chip ${b}">Aerial ${o.aer}</span>`); }
   if (o.ph != null){ const b = phBand(o.ph); f.push(b === 'fit' ? `<span class="rl-chip up">✓ Philosophy ${o.ph}</span>` : b === 'against' ? `<span class="rl-chip down">${warn_icon()}Philosophy ${o.ph}</span>` : `<span class="rl-chip neu">Philosophy ${o.ph}</span>`); }
   const ch = charOf(p); if (ch === 'pass') f.push(`<span class="rl-chip up">✓ ${esc(p.pers)}</span>`);
   if (p.expY != null && p.expY <= 1.1) f.push(`<span class="rl-chip neu">${p.expY <= 0.1 ? 'Contract expiring' : 'Final year'}</span>`);
