@@ -4070,6 +4070,7 @@ function renderShortlist(){
     : `<div class="panel cmpempty"><div><h2>Your shortlist is empty</h2><p>Open a player and choose Add to shortlist, use + Add to shortlist on Compare, or drag a box on Scatter and add the selection.</p></div><div class="qa"><button class="btn primary" type="button" data-tab="scatter">Open Scatter</button><button class="btn" type="button" id="sl-search">Search for a player</button></div></div>`; root.innerHTML = h; bindSl(root); return; }
   const lens = roleById[SLV.lens];
   h += `<div class="tablewrap"><table class="sltable"><thead><tr><th>Player</th><th class="num">Age</th><th>Position</th><th class="num">${lens ? esc(roleShortAbbr(lens)) : 'Best role'}</th>${isP ? `<th class="num" title="Role score against players aged ${PR.maxAge} or under in the position">Age-group score</th><th class="num">Minutes</th>` : '<th>Squad fit</th>'}<th class="num">Value</th><th class="num">Contract</th><th>Status</th><th>Reason or note</th><th class="num">Added</th><th><span class="sr">Actions</span></th></tr></thead><tbody>`;
+  if (!rows.length) h += '<tr><td colspan="11" class="hint">No players match the selected filters.</td></tr>';
   rows.forEach(x => { const p = playerByKey(x.key), mine = p ? isMine(p) : (S.save.myClub && x.club === S.save.myClub), st = x.status || 'watching';
     const r = p ? slRole(p) : null, sc = p && r ? roleScore(p, r) : null, ci = cmpSlot(x.key);
     const fit = p && squadLookup.get(p.key), gap = fit && fit.slot.st && fit.score != null ? fit.score - fit.slot.st.sc : null;
