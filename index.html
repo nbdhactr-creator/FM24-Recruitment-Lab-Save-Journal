@@ -3300,6 +3300,49 @@ function rowHtml(p, x, y, attr, zone, role, rk){
   return `<tr tabindex="0" data-key="${esc(p.key)}" ${attr}${rk && p.key === findKey ? ' class="hit"' : ''}><td>${rk ? `<span class="rk">${rk}</span>` : ''}${zone==null?'':`<span class="zone-dot${zone?'':' off'}"></span>`}<span class="pname">${esc(p.name)}</span>${copyBtn(p.name)}${pTags(p)}${retrainTag(p, role)} ${confHtml(p)}${feasHtml(p)}<div class="pclub">${esc(p.club)}, ${esc(p.div)}</div></td><td class="num">${esc(p.age)}<div class="pclub">${esc(p.height||'')}</div></td><td>${esc(p.pos)}<div class="pclub">${footLabel(p.foot)}</div></td><td>${bandHtml(steps(p))}<div class="pclub">${p.rep?starsTxt(p.rep.stars):''}</div></td><td>${scoreHtml(sc)}</td><td class="num">${cellV(p,S.x,x)}</td><td class="num">${cellV(p,S.y,y)}</td><td class="num">${contractTxt(p)}</td><td>${esc(p.tv||'')}<div class="pclub">${esc(p.wageTxt||'')}</div></td><td>${addBtn(p)}</td></tr>`;
 }
 let current = [], squad = [];
+const ROLE_SORT = {key:'score', dir:'desc'};
+try { const v = JSON.parse(localStorage.getItem('rlabp-role-sort') || 'null'); if (v && ['name','age','position','level','score','x','y','contract','value'].includes(v.key) && ['asc','desc'].includes(v.dir)) Object.assign(ROLE_SORT, v); } catch(e){}
+function roleSortValue(d, key){
+  if (key === 'name') return d.p.name || '';
+  if (key === 'age') return d.p.age;
+  if (key === 'position') return d.p.pos || '';
+  if (key === 'level') return steps(d.p);
+  if (key === 'score') return d.sc;
+  if (key === 'x') return d.x;
+  if (key === 'y') return d.y;
+  if (key === 'contract') { const m = String(d.p.expires || '').match(/(\\d{4})$/); return m ? +m[1] : null; }
+  if (key === 'value') return d.p.val;
+  return null;
+}
+function sortRoleRows(rows){
+  const {key, dir} = ROLE_SORT, sign = dir === 'asc' ? 1 : -1;
+  rows.sort((a,b) => {
+    const av = roleSortValue(a[0], key), bv = roleSortValue(b[0], key);
+    const am = av == null || av === '', bm = bv == null || bv === '';
+    if (am !== bm) return am ? 1 : -1;
+    let c = typeof av === 'string' ? av.localeCompare(bv, undefined, {numeric:true, sensitivity:'base'}) : av - bv;
+    if (c) return c * sign;
+    return ((b[0].sc ?? -1) - (a[0].sc ?? -1)) || String(a[0].p.name).localeCompare(String(b[0].p.name));
+  });
+  return rows;
+}
+function roleSortHead(key, label, cls=''){
+  const active = ROLE_SORT.key === key, arrow = active ? (ROLE_SORT.dir === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+  return `<th class="sortable${cls ? ' ' + cls : ''}${active ? ' on' : ''}" data-role-sort="${key}" tabindex="0" role="button" aria-label="Sort by ${label}, ${active ? ROLE_SORT.dir === 'asc' ? 'ascending' : 'descending' : 'not sorted'}">${label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></th>`;
+}
+$('thead').addEventListener('click', e => {
+  const h = e.target.closest('[data-role-sort]'); if (!h) return;
+  const key = h.dataset.roleSort;
+  if (ROLE_SORT.key === key) ROLE_SORT.dir = ROLE_SORT.dir === 'asc' ? 'desc' : 'asc';
+  else { ROLE_SORT.key = key; ROLE_SORT.dir = key === 'score' ? 'desc' : 'asc'; }
+  try { localStorage.setItem('rlabp-role-sort', JSON.stringify(ROLE_SORT)); } catch(e){}
+  renderRole();
+});
+$('thead').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const h = e.target.closest('[data-role-sort]'); if (!h) return;
+  e.preventDefault(); h.click();
+});
 function render(){ if (EX.mode === 'profile') return renderPS(); if (EX.mode === 'risers') return renderRisers(); if (EX.mode === 'prospects') return renderPros(); renderRole(); }
 function renderRole(){
   if (!S.season || S.tab !== 'explore'){ renderCmpBar(); return; }
@@ -3355,11 +3398,12 @@ function renderRole(){
   g += `<circle id="hl" r="9" fill="none" stroke="var(--ink)" stroke-width="2" visibility="hidden" pointer-events="none"/>`;
   els.chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(`${roleTitle(r)}: ${S.x} against ${S.y}, ${pool.length} players`)}">${g}</svg><div class="tip" id="tip"></div>`;
   els.tip = $('tip');
-  const head = `<tr><th>Player</th><th class="num">Age</th><th>Position</th><th>Level</th><th>Role score</th><th class="num">${esc(S.x)}</th><th class="num">${esc(S.y)}</th><th class="num">Contract</th><th>Value</th><th><span class="sr">Compare</span></th></tr>`;
+  const head = `<tr>${roleSortHead('name','Player')}${roleSortHead('age','Age','num')}${roleSortHead('position','Position')}${roleSortHead('level','Level')}${roleSortHead('score','Role score')}${roleSortHead('x',esc(S.x),'num')}${roleSortHead('y',esc(S.y),'num')}${roleSortHead('contract','Contract','num')}${roleSortHead('value','Value') }<th><span class="sr">Compare</span></th></tr>`;
   $('thead').innerHTML = head;
-  const top = current.map((d,i)=>[d,i]).sort((a,b) => ((b[0].sc ?? -1) - (a[0].sc ?? -1))).slice(0, S.showN);
+  const top = sortRoleRows(current.map((d,i)=>[d,i])).slice(0, S.showN);
   $('tbody').innerHTML = top.map(([d,i], n) => rowHtml(d.p, d.x, d.y, `data-i="${i}"`, d.zone, r, n + 1)).join('');
-  $('shown').textContent = `Showing ${Math.min(S.showN, current.length)} of ${current.length.toLocaleString()}, ranked by role score.`; $('more').hidden = S.showN >= current.length; $('less').hidden = S.showN <= 25; renderFind();
+  const sortLabel = ({name:'player name',age:'age',position:'position',level:'level',score:'role score',x:S.x,y:S.y,contract:'contract expiry',value:'market value'})[ROLE_SORT.key];
+  $('shown').textContent = `Showing ${Math.min(S.showN, current.length)} of ${current.length.toLocaleString()}, sorted by ${sortLabel} (${ROLE_SORT.dir === 'asc' ? 'lowest to highest' : 'highest to lowest'}).`; $('more').hidden = S.showN >= current.length; $('less').hidden = S.showN <= 25; renderFind();
   renderSquad(head, sq);
 }
 function renderSquad(head, sq){
