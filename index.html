@@ -3404,7 +3404,8 @@ function renderRole(){
   const top = sortRoleRows(current.map((d,i)=>[d,i])).slice(0, S.showN);
   $('tbody').innerHTML = top.map(([d,i], n) => rowHtml(d.p, d.x, d.y, `data-i="${i}"`, d.zone, r, n + 1)).join('');
   const sortLabel = ({name:'player name',age:'age',position:'position',level:'level',score:'role score',x:S.x,y:S.y,contract:'contract expiry',value:'market value'})[ROLE_SORT.key];
-  $('shown').textContent = `Showing ${Math.min(S.showN, current.length)} of ${current.length.toLocaleString()}, sorted by ${sortLabel} (${ROLE_SORT.dir === 'asc' ? 'lowest to highest' : 'highest to lowest'}).`; $('more').hidden = S.showN >= current.length; $('less').hidden = S.showN <= 25; renderFind();
+  const sortDirection = ['name','position'].includes(ROLE_SORT.key) ? (ROLE_SORT.dir === 'asc' ? 'A to Z' : 'Z to A') : (ROLE_SORT.dir === 'asc' ? 'lowest to highest' : 'highest to lowest');
+  $('shown').textContent = `Showing ${Math.min(S.showN, current.length)} of ${current.length.toLocaleString()}, sorted by ${sortLabel} (${sortDirection}).`; $('more').hidden = S.showN >= current.length; $('less').hidden = S.showN <= 25; renderFind();
   renderSquad(head, sq);
 }
 function renderSquad(head, sq){
