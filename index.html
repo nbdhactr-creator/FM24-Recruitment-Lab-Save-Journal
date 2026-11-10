@@ -3173,6 +3173,20 @@ function roleFamilyScore(role, percentileFor){
   return (totalFamilyWeight && coreAvailable && availableFamilyWeight / totalFamilyWeight >= 0.6)
     ? Math.round(weightedScore / availableFamilyWeight) : null;
 }
+function roleEffectiveWeights(role){
+  const families = new Map(), out = {};
+  for (const [key, weight] of Object.entries(role.w)) {
+    const family = roleFamilyOf(key);
+    if (!families.has(family)) families.set(family, []);
+    families.get(family).push({key, weight});
+  }
+  for (const entries of families.values()) {
+    const cap = Math.max(...entries.map(x => x.weight));
+    const sum = entries.reduce((total, x) => total + x.weight, 0);
+    for (const x of entries) out[x.key] = cap * x.weight / sum;
+  }
+  return out;
+}
 function roleScore(p, role){
   const ck = 'v2|' + role.id + '|' + adjSig() + (NODEF ? '|nd' : '');
   let m = scoreCache.get(ck); if (!m){ m = new Map(); scoreCache.set(ck, m); }
@@ -3180,7 +3194,7 @@ function roleScore(p, role){
   const sc = roleFamilyScore(role, key => statPct(p, key, role.strata));
   m.set(p.i, sc); return sc;
 }
-function topStats(role, n){ return Object.entries(role.w).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
+function topStats(role, n){ return Object.entries(roleEffectiveWeights(role)).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
 
 /* ---------------- State ---------------- */
 const S = {showN:25, saves:[], save:null, season:null, seasonCache:new Map(), role:'cd-DC-D', x:null, y:null, leagues:new Set(), conds:[], cmp:[], mode:'overlay', tab:'home', tac:null, cmpRoleLocked:false};
@@ -6294,7 +6308,7 @@ function renderScout(){
     <div class="pp-flags">${flags.join('')}</div></section>`;
   // percentile profile for the chosen role
   const tq = tacRolesFor(p).map(x => `<button type="button" class="tq" data-pprole="${x.r.id}" aria-pressed="${x.r.id === role.id}">${esc(roleAbbr(x.r))} · ${esc(x.codes.join(', '))}</button>`).join('');
-  const needs = Object.entries(role.w).sort((a, b) => b[1] - a[1]), mx = needs.length ? needs[0][1] : 1;
+  const needs = Object.entries(roleEffectiveWeights(role)).sort((a, b) => b[1] - a[1]), mx = needs.length ? needs[0][1] : 1;
   const prow = (t, raw, pc, wt, off, title) => `<div class="pp-pr${off ? ' off' : ''}"${title ? ` title="${esc(title)}"` : ''}><span class="t">${t}</span><span class="tr"><i style="width:${pc == null ? 0 : Math.round(pc)}%;background:${pctCol(pc)}"></i></span><span class="raw">${raw}</span><span class="wt">${wt}</span><span class="pc">${pc == null ? '–' : Math.round(pc)}</span></div>`;
   let rows = `<div class="pp-g"><b>What the role needs</b><i></i><span>${esc(roleShort(role))} · vs ${esc(STRATA[role.strata].label.toLowerCase())}s</span></div>`;
   rows += needs.map(([k, w]) => { const v = floorOK(p, k) ? statVal(p, k) : null, pc = v == null ? null : statPct(p, k, role.strata); return prow(esc(sLabel(k)), statShow(v, k), pc, wDots(w >= mx * 0.75 ? 3 : w >= mx * 0.45 ? 2 : 1), false, k); }).join('');
@@ -6403,7 +6417,7 @@ function reportDoc(p, role){
   const own = rolesFor(p).map(r => ({r, sc:roleScore(p, r)})).filter(x => x.sc != null).sort((a, b) => b.sc - a.sc);
   const facts = [['Age', p.age ?? '–'], ['Height', heightTxt(p.height) || '–'], ['Foot', footShort(p.foot).replace(' foot', '') || '–'], ['Nationality', p.nat || '–'], ['Position', p.pos || '–'], ['Minutes', Math.round(p.mins || 0).toLocaleString()],
     ['Contract', contractYear(p) === '–' ? '–' : 'Until ' + contractYear(p)], ['Value', valueTxt(p)], ['Wage', wageShort(p) + ' a week'], ['Personality', p.pers || '–'], ['Average rating', p.s['Av Rat'] != null ? p.s['Av Rat'].toFixed(2) : '–'], ['Best role', own[0] ? `${own[0].r.name} · ${own[0].sc}` : '–']];
-  const needs = Object.entries(role.w).sort((a, b) => b[1] - a[1]);
+  const needs = Object.entries(roleEffectiveWeights(role)).sort((a, b) => b[1] - a[1]);
   const pr = (t, raw, pc, off) => `<div class="pr${off ? ' off' : ''}"><span class="ell" style="color:#C9CDD3;font-size:12.5px">${t}</span><span class="num" style="text-align:right">${raw}</span><span class="bar"><i style="width:${pc == null ? 0 : Math.round(pc)}%;background:${pctCol(pc)}"></i></span><span class="num" style="text-align:right;color:${pctCol(pc)}">${pc == null ? '–' : Math.round(pc)}</span></div>`;
   let prof = `<div class="g"><b>What a ${esc(role.name.toLowerCase())} needs</b><i></i></div>` + needs.map(([k]) => { const v = floorOK(p, k) ? statVal(p, k) : null; return pr(esc(sLabel(k)), statShow(v, k), v == null ? null : statPct(p, k, role.strata)); }).join('');
   prof += `<div class="g"><b>Your philosophy</b><i></i></div>` + PRINCIPLES.map((x, i) => pr(esc(x.name) + (ph && ph.w[i] ? '' : ' <span style="color:#6E727A;font-size:10.5px">not counted</span>'), ph && ph.w[i] ? '●'.repeat(ph.w[i]) : '', ph ? ph.parts[i] : null, !(ph && ph.w[i]))).join('');
