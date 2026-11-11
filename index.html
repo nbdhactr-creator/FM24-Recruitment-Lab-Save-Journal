@@ -4548,7 +4548,7 @@ function renderTransferHistory(){
 }
 
 /* ---------------- Contract and youth markets ---------------- */
-const CM={mode:{senior:'6',youth:'6'},role:{senior:'',youth:''},clubKey:{senior:'',youth:''},pos:{senior:'all',youth:'all'},minM:{senior:600,youth:300},sort:{senior:'score',youth:'score'},q:{senior:'',youth:''}};
+const CM={mode:{senior:'6',youth:'6'},role:{senior:'',youth:''},clubKey:{senior:'',youth:''},pos:{senior:'all',youth:'all'},minM:{senior:0,youth:0},sort:{senior:'score',youth:'score'},q:{senior:'',youth:''}};
 function cmClubKey(t){return norm(t.club)+'|'+norm(t.div);}
 function cmClubs(){return teamRows().filter(t=>t.club).sort((a,b)=>a.club.localeCompare(b.club)||a.div.localeCompare(b.div));}
 function cmSelectedClub(kind,clubs){
@@ -4560,13 +4560,17 @@ function cmSelectedClub(kind,clubs){
   return key||'';
 }
 function cmDate(v){
-  const m=String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(m){const d=new Date(+m[3],+m[2]-1,+m[1]);return d.getFullYear()===+m[3]&&d.getMonth()===+m[2]-1&&d.getDate()===+m[1]?d:null;}
-  return null;
+  const raw=String(v||'').trim();let y,m,d,hit=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(hit){y=+hit[1];m=+hit[2];d=+hit[3];}
+  else{hit=raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);if(!hit)return null;d=+hit[1];m=+hit[2];y=+hit[3];}
+  const out=new Date(y,m-1,d);return out.getFullYear()===y&&out.getMonth()===m-1&&out.getDate()===d?out:null;
 }
 function cmExpiry(p){return cmDate(p.expires);}
 function cmAddMonths(d,n){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDate();x.setMonth(x.getMonth()+n);if(x.getDate()<day)x.setDate(0);return x;}
-function cmFreeAgent(p){return /^(free transfer|free agent|free agents|unattached|without club|no club)$/i.test(String(p.club||'').trim());}
+function cmFreeAgent(p){
+  const club=String(p.club||'').trim(),div=String(p.div||'').trim();
+  return /\b(free transfer|free agent|free agents|unattached|without club|no club)\b/i.test(club+' '+div);
+}
 function cmPosMatch(p,v){
   if(v==='all')return true;
   if(v==='GK')return p.slots.has('GK');
@@ -4583,9 +4587,10 @@ function cmBuild(kind){
   const out=[];
   for(const p of S.season.players){
     if(kind==='youth'&&(p.age==null||p.age>=21))continue;
-    if(!inStrata(p,role.strata)||!cmPosMatch(p,pos)||(p.mins||0)<minM)continue;
+    if(mode!=='all'&&!inStrata(p,role.strata))continue;
+    if(!cmPosMatch(p,pos)||(p.mins||0)<minM)continue;
     const free=cmFreeAgent(p),expiry=cmExpiry(p);
-    if(mode==='free'?!free:(!expiry||!asOf||expiry<=asOf||(mode==='6'?expiry>limit6:expiry>limit12)))continue;
+    if(mode==='free'?!free:(mode==='all'?false:(!expiry||!asOf||expiry<=asOf||(mode==='6'?expiry>limit6:expiry>limit12))))continue;
     if(q&&!norm([p.name,p.club,p.div,p.pos,p.nat].join(' ')).includes(q))continue;
     const score=roleScore(p,role);
     out.push({p,score,expiry,free});
@@ -4614,7 +4619,7 @@ function renderContractMarket(youth){
     '<div class="field"><label for="cm-pos-'+kind+'">Position group</label><select id="cm-pos-'+kind+'"><option value="all">All positions in role</option><option value="GK">Goalkeeper</option><option value="DEF">Defence</option><option value="MID">Midfield</option><option value="FWD">Attack</option></select></div>'+
     '<div class="field"><label for="cm-date-'+kind+'">Your in-game date</label><input id="cm-date-'+kind+'" type="date" value="'+esc(dateVal)+'"></div></div>'+
     '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" id="cm-setclub-'+kind+'">Set selected club as My Club</button><span class="hint">'+(club?'Scoring context: '+esc(club.club)+' · '+esc(club.div):'Choose a club to set your recruitment context')+'</span></div>'+
-    '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn '+(mode==='6'?'primary':'')+'" type="button" data-cm-mode="6">Expiring within 6 months</button><button class="btn '+(mode==='12'?'primary':'')+'" type="button" data-cm-mode="12">Expiring within 12 months</button><button class="btn '+(mode==='free'?'primary':'')+'" type="button" data-cm-mode="free">Free agents</button></div>'+
+    '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn '+(mode==='6'?'primary':'')+'" type="button" data-cm-mode="6">Expiring within 6 months</button><button class="btn '+(mode==='12'?'primary':'')+'" type="button" data-cm-mode="12">Expiring within 12 months</button><button class="btn '+(mode==='free'?'primary':'')+'" type="button" data-cm-mode="free">Free agents</button>'+(youth?'<button class="btn '+(mode==='all'?'primary':'')+'" type="button" data-cm-mode="all">All players</button>':'')+'</div>'+
     '<div class="grid g3" style="margin-top:12px;align-items:end"><div class="field"><label for="cm-mins-'+kind+'">Minimum minutes</label><input id="cm-mins-'+kind+'" type="number" min="0" step="50" value="'+minM+'"></div><div class="field"><label for="cm-sort-'+kind+'">Sort results</label><select id="cm-sort-'+kind+'"><option value="score">Role score: highest first</option><option value="rating">Average rating: highest first</option><option value="age">Age: youngest first</option><option value="value">Transfer value: lowest first</option><option value="wage">Wage: lowest first</option></select></div><div class="field"><label for="cm-search-'+kind+'">Search player or club</label><input id="cm-search-'+kind+'" type="search" value="'+esc(CM.q[kind])+'" placeholder="Search name, club or nationality"></div></div></div></div>'+
     '<div class="panel"><div class="phead"><div><h2>'+label+'</h2><p class="hint">'+(youth?'Under-21 players only.':'Senior market; no age cap.')+' Role scores are based on the selected role and exported performance data.</p></div><div class="h2" id="cm-count-'+kind+'">—</div></div><div id="cm-results-'+kind+'"></div><p class="hint" id="cm-note-'+kind+'" style="margin:10px 16px 16px"></p></div>';
   $('cm-pos-'+kind).value=CM.pos[kind];$('cm-sort-'+kind).value=CM.sort[kind];
@@ -4641,7 +4646,7 @@ function renderContractMarket(youth){
 }
 function cmDraw(kind,youth){
   const root=$('cm-results-'+kind);if(!root)return;
-  const built=cmBuild(kind),mode=CM.mode[kind],dateRequired=mode!=='free'&&!built.asOf;
+  const built=cmBuild(kind),mode=CM.mode[kind],dateRequired=(mode==='6'||mode==='12')&&!built.asOf;
   $('cm-count-'+kind).textContent=dateRequired?'Set date':built.out.length.toLocaleString();
   if(dateRequired){root.innerHTML='<div class="grp"><p class="hint">Enter your current in-game date above. The 6- and 12-month buttons calculate expiry windows from that date, rather than guessing from the season label.</p></div>'; $('cm-note-'+kind).textContent='Free-agent results do not require an in-game date.';return;}
   const rows=built.out;
@@ -4649,8 +4654,9 @@ function cmDraw(kind,youth){
     const p=x.p,score=x.score,expiry=x.expiry?x.expiry.toLocaleDateString('en-GB'):'—',already=slHas(p.key);
     return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'<div class="pclub">'+esc(p.wageTxt||'Wage unavailable')+'</div></td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
   }).join('')+'</tbody></table></div>':'<div class="grp"><p class="hint">No players match this view and its filters.</p></div>';
-  const base=mode==='free'?'Players explicitly listed as Free Transfer, Free Agent or Unattached.': 'Contract dates between '+built.asOf.toLocaleDateString('en-GB')+' and '+(mode==='6'?built.limit6:built.limit12).toLocaleDateString('en-GB')+'.';
-  $('cm-note-'+kind).textContent=base+' Results are ranked by role score; players without enough statistical coverage are shown below scored players. Transfer value is not a transfer fee. Only the latest imported season is searched.';
+  const base=mode==='free'?'Players explicitly identified as Free Transfer, Free Agent or Unattached.':mode==='all'?'All under-21 players in the current import, regardless of contract status or role compatibility. Players without a valid score appear after scored players.':'Contract expiry dates from '+built.asOf.toLocaleDateString('en-GB')+' through '+(mode==='6'?built.limit6:built.limit12).toLocaleDateString('en-GB')+'.';
+  const unknown=S.season.players.filter(p=>(kind!=='youth'||(p.age!=null&&p.age<21))&&!cmExpiry(p)&&!cmFreeAgent(p)).length;
+  $('cm-note-'+kind).textContent=base+' Ranked by role score; insufficient-data players remain visible. '+(mode==='6'||mode==='12'?unknown.toLocaleString()+' players have no recognised expiry date and are not counted in either expiry window. ':'')+'Transfer value is not a transfer fee. Only the latest imported season is searched.';
 }
 
 /* ---------------- Season progress ---------------- */
