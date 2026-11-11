@@ -4791,7 +4791,7 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-expl
 
 /* ---------------- Library ---------------- */
 let APP_PERSIST_WRITES = 0;
-async function persist(){ APP_PERSIST_WRITES++; try { await Store.putSave(PV.on ? Object.assign({}, S.save, {myClub:PV.club0, myLeague:PV.league0, dof:PV.dof0}) : S.save); } catch(e){ console.error(e); toast('Could not save changes: ' + (e.code || e.message)); } finally { APP_PERSIST_WRITES = Math.max(0, APP_PERSIST_WRITES - 1); } }
+async function persist(){ APP_PERSIST_WRITES++; try { await Store.putSave(PV.on ? Object.assign({}, S.save, {myClub:PV.club0, myLeague:PV.league0, dof:PV.dof0}) : S.save); return true; } catch(e){ console.error(e); toast('Could not save changes: ' + (e.code || e.message)); return false; } finally { APP_PERSIST_WRITES = Math.max(0, APP_PERSIST_WRITES - 1); } }
 function storeBadge(){ const el = $('store'); el.className = 'store ' + (Store.kind === 'cloud' ? 'on' : Store.kind === 'local' ? 'local' : '');
   el.querySelector('span').textContent = Store.kind === 'cloud' ? 'Synced to private cloud' : Store.kind === 'local' ? 'Saved on this device' : 'Not stored';
   el.title = Store.kind === 'cloud' ? 'Your Recruitment Lab data is stored in your private Supabase account. Keep periodic backups.' : Store.kind === 'local' ? 'Everything is kept in this browser on this device. Download a backup from Settings now and then.' : 'This browser isn\u2019t letting the Lab store anything, so imports last for this session only. A private window is the usual cause.'; }
@@ -4914,14 +4914,26 @@ $('imp-go').onclick = async () => {
     const stage = +$('imp-stage').value || 1;
     if (!obj.rows.length) throw new Error('No player rows found in that file.');
     prog(60, `Storing ${obj.rows.length.toLocaleString()} players`); const ref = await Store.putSeason(obj);
-    let save; const sid = $('imp-save').value;
-    if (sid === '__new'){ save = {id:newId(), name: $('imp-newname').value.trim() || 'New save', created: new Date().toISOString(), myLeague:'', myClub:'', accent:'#F2B33D', seasons:[], history:[], groups:[], tactics:[], searches:[]}; S.saves.push(save); }
+    let save; const sid = $('imp-save').value, previousActiveSave = S.save;
+    const isNewSave = sid === '__new';
+    if (isNewSave){ save = {id:newId(), name: $('imp-newname').value.trim() || 'New save', created: new Date().toISOString(), myLeague:'', myClub:'', accent:'#F2B33D', seasons:[], history:[], groups:[], tactics:[], searches:[]}; S.saves.push(save); }
     else save = S.saves.find(s => s.id === sid);
-    const old = (save.seasons || []).find(x => x.label === label); if (old){ save.history = save.history || []; save.history.push(old); save.seasons = save.seasons.filter(x => x !== old); S.seasonCache.delete(save.id + '|' + label); }
+    if (!save) throw new Error('The selected save could not be found. Please reopen the import window and try again.');
+    const saveBefore = JSON.parse(JSON.stringify(save));
+    const old = (save.seasons || []).find(x => x.label === label); if (old){ save.history = save.history || []; save.history.push(old); save.seasons = save.seasons.filter(x => x.label !== label); S.seasonCache.delete(save.id + '|' + label); }
     save.seasons = save.seasons || []; const entry = {label, ref, n: obj.rows.length, imported: new Date().toISOString()}; if (stage < 1) entry.progress = stage; save.seasons.push(entry);
     if (save.currentSeason && (sy(label) || 0) > (sy(save.currentSeason) || 0)) save.currentSeason = label;
     S.save = save; S.seasonCache.set(save.id + '|' + label, obj);
-    prog(85, 'Saving the library'); await persist(); prog(100, 'Done');
+    prog(85, 'Saving the library');
+    if (!(await persist())) {
+      Object.keys(save).forEach(k => delete save[k]); Object.assign(save, saveBefore);
+      if (isNewSave) S.saves = S.saves.filter(x => x.id !== save.id);
+      S.save = previousActiveSave;
+      S.seasonCache.delete(save.id + '|' + label);
+      await Store.delSeason(ref);
+      throw new Error('The season file was uploaded, but the save record could not be confirmed. The incomplete upload was cleaned up. Your previous save has been kept. Please try again.');
+    }
+    prog(100, 'Done');
     $('dlg-import').close(); toast(`${label} imported: ${obj.rows.length.toLocaleString()} players${obj.integrity && obj.integrity.duplicateUIDs.length ? ` · ${obj.integrity.duplicateUIDs.length} duplicate UID(s) flagged` : ''}${obj.integrity && obj.integrity.rowsWithoutUID ? ` · ${obj.integrity.rowsWithoutUID} row(s) without UID` : ''}${obj.integrity && obj.integrity.duplicateFallbacks && obj.integrity.duplicateFallbacks.length ? ` · ${obj.integrity.duplicateFallbacks.length} ambiguous name/club identity group(s)` : ''}`);
     await openSave(save.id, label); maybeSetup();
   } catch(e){ console.error(e); $('imp-status').innerHTML = `<span class="err">${esc(e.code === 'too_large' || e.message === 'too_large' ? 'That season is over the 20 MB storage limit for one file.' : e.code === 'quota_or_state' ? 'Storage for this page is full. Delete an old season or save in Save settings.' : (e.message || 'Import failed.'))}</span>`; }
