@@ -4476,11 +4476,11 @@ async function thBuild(){
     if(!obj||!Array.isArray(obj.rows)||!Array.isArray(obj.cols))continue;
     const ix=Object.fromEntries(obj.cols.map((c,i)=>[c,i]));
     if(ix.UID==null||ix.Club==null||ix.Name==null)continue;
-    const seen=new Set(),players=new Map();
+    const uidCounts=new Map(),players=new Map();
+    obj.rows.forEach(row=>{const uid=String(row[ix.UID]||'').trim();if(uid)uidCounts.set(uid,(uidCounts.get(uid)||0)+1);});
     obj.rows.forEach(row=>{
       const uid=String(row[ix.UID]||'').trim(),club=String(row[ix.Club]||'').trim();
-      if(!uid||!club||seen.has(uid))return;
-      seen.add(uid);
+      if(!uid||!club||uidCounts.get(uid)!==1)return;
       players.set(uid,{uid,name:String(row[ix.Name]||'Unknown player'),club,division:ix.Division==null?'':String(row[ix.Division]||''),position:ix.Position==null?'':String(row[ix.Position]||'')});
     });
     snapshots.push({entry,players});
