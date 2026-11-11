@@ -5049,7 +5049,7 @@ $('sh-del').onclick = async () => {
 
 /* ================= Squad stats ================= */
 const CK = {data:new Map(), proc:new Map()};
-const SQ = {season:null, ckId:null, mode:'season', scope:'all', tacId:null, bound:false};
+const SQ = {season:null, ckId:null, dataCkId:null, mode:'assessment', scope:'all', tacId:null, bound:false};
 const POOLC = new Map();
 const TIER_LABEL = {elite:'Elite', good:'Good', floor:'Floor', below:'Below floor', na:''};
 function sortCks(a){ return (a || []).slice().sort((x, y) => ((sy(x.season) || 0) - (sy(y.season) || 0)) || String(x.date || '').localeCompare(String(y.date || '')) || ((x.created || 0) - (y.created || 0))); }
@@ -5244,7 +5244,19 @@ async function renderSquadStats(){
   if(!SQ.bound){bindSquad(root);SQ.bound=true;}
   const s=S.save, all=sortCks(s.checkpoints||[]), seasons=[...new Set([...all.map(c=>c.season),S.season&&S.season.label].filter(Boolean))].sort();
   if(!SQ.season||!seasons.includes(SQ.season)) SQ.season=s.currentSeason||seasons[seasons.length-1]||'';
-  const cks=all.filter(c=>c.season===SQ.season&&c.ref);
+  const seasonCks=all.filter(c=>c.season===SQ.season);
+  const cks=seasonCks.filter(c=>c.ref);
+  let dataCk=SQ.dataCkId===''?null:(seasonCks.find(c=>c.id===SQ.dataCkId)||seasonCks[seasonCks.length-1]||null);
+  SQ.dataCkId=dataCk?dataCk.id:(SQ.dataCkId===''?'':null);
+  const dataOptions=seasonCks.map(x=>`<option value="${esc(x.id)}"${dataCk&&x.id===dataCk.id?' selected':''}>${esc(x.label||x.date||x.id)}</option>`).join('');
+  const modeTabs=`<div class="pills" role="tablist" aria-label="Squad Assessment views"><button class="pill" type="button" data-mode="assessment" aria-pressed="${SQ.mode!=='data'}">Squad Assessment</button><button class="pill" type="button" data-mode="data" aria-pressed="${SQ.mode==='data'}">Data Hub</button></div>`;
+  if(SQ.mode==='data'){
+    const team=dataCk&&dataCk.team||{};
+    const metricRows=[['Played','P',v=>Math.round(v).toLocaleString()],['Won','W',v=>Math.round(v).toLocaleString()],['Drawn','D',v=>Math.round(v).toLocaleString()],['Lost','L',v=>Math.round(v).toLocaleString()],['Goals for','GF',v=>Math.round(v).toLocaleString()],['Goals against','GA',v=>Math.round(v).toLocaleString()],['xG for','xG',v=>Number(v).toFixed(1)],['xG against','xGA',v=>Number(v).toFixed(1)],['xPts','xPTS',v=>Number(v).toFixed(1)],['Possession %','poss',v=>Number(v).toFixed(1)+'%'],['PPDA','ppda',v=>Number(v).toFixed(1)],['Field tilt %','tilt',v=>Number(v).toFixed(1)+'%'],['League position','pos',v=>ordinal(Math.round(v))],['Possession rank','prank',v=>ordinal(Math.round(v))]];
+    const cards=metricRows.map(([label,key,format])=>`<div class="kpi"><div class="k"><span>${label}</span></div><div class="v">${team[key]==null?'—':esc(format(team[key]))}</div></div>`).join('');
+    root.innerHTML=`<div class="panel"><div class="phead"><div><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}${s.myClub?' · '+esc(s.myClub):''}</p></div><div class="row"><button class="btn primary" type="button" data-sq="add">Add checkpoint</button></div></div>${modeTabs}<div class="sq-ctl"><div class="field"><label for="sq-season">Season</label><select id="sq-season">${seasons.map(x=>`<option value="${esc(x)}"${x===SQ.season?' selected':''}>${esc(x)}</option>`).join('')}</select></div><div class="field"><label for="sq-data-ck">Checkpoint</label><select id="sq-data-ck">${dataOptions||'<option value="">No checkpoints saved</option>'}</select></div></div><div class="grp"><h3>Team numbers from the Data Hub, season to date</h3><p class="hint">${dataCk?esc(dataCk.label||dataCk.date||SQ.season):'No checkpoint selected for this season. Add a checkpoint and enter the Data Hub figures.'}</p><div class="grid g2">${cards}</div></div></div>`;
+    return;
+  }
   let ck=SQ.ckId===''?null:(cks.find(c=>c.id===SQ.ckId)||cks[cks.length-1]||null);
   SQ.ckId=ck?ck.id:(SQ.ckId===''?'':null);
   let view=null,source='';
@@ -5274,7 +5286,7 @@ async function renderSquadStats(){
   const roleRows=assessment.map(x=>`<tr><td><b>${esc(SLOT_LABEL[x.slot]||x.slot)}</b><div class="pclub">${esc(x.role?roleTitle(x.role):'No role assigned')}</div></td><td><span class="pname">${esc(x.player?x.player.name:'No measured starter')}</span>${x.player?`<div class="pclub">${esc(x.player.pos||'')} · ${Math.round(x.player.mins||0).toLocaleString()} mins</div>`:''}</td><td class="num">${x.score==null?'—':x.score}</td><td>${x.depth.filter(d=>!x.player||d.p.key!==x.player.key).slice(0,2).map(d=>`<div>${esc(d.p.name)} <span class="pclub">${d.sc}</span></div>`).join('')||'<span class="pclub">No scored cover</span>'}</td><td class="num">${x.depth.length}</td></tr>`).join('');
   root.innerHTML=`<div class="panel">
     <div class="phead"><div><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}${s.myClub?' · '+esc(s.myClub):''}</p></div><div class="row"><button class="btn primary" type="button" data-sq="add">Add checkpoint</button></div></div>
-    <div class="sq-ctl">
+    ${modeTabs}\n     <div class="sq-ctl">
       <div class="field"><label for="sq-season">Season</label><select id="sq-season">${options}</select></div>
       <div class="field"><label for="sq-ck">Squad data</label><select id="sq-ck"><option value="">Current world import</option>${ckOptions}</select></div>
       <div class="field"><label for="sq-tactic">Assess against tactic</label><select id="sq-tactic">${tacs.map(t=>`<option value="${esc(t.id)}"${t.id===tac.id?" selected":""}>${esc(t.name)} · ${esc(t.formation)}</option>`).join("")}</select></div>
@@ -5314,6 +5326,7 @@ function bindSquad(root){
     const t = e.target, s = S.save;
     if (t.id === 'sq-season'){ SQ.season = t.value; SQ.ckId = null; renderSquadStats(); return; }
     if (t.id === 'sq-ck'){ SQ.ckId = t.value || ''; renderSquadStats(); return; }
+    if (t.id === 'sq-data-ck'){ SQ.dataCkId = t.value || ''; renderSquadStats(); return; }
     if (t.id === 'sq-scope'){ SQ.scope = t.value; renderSquadStats(); return; }
     if (t.id === 'sq-tactic'){ SQ.tacId = t.value; s.sq.assessmentTactic = t.value; await persist(); renderSquadStats(); return; }
     if (t.id === 'sq-nodef'){ setNoDef(t.checked); return; }
