@@ -1608,6 +1608,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="scatter" title="Scatter"><svg viewBox="0 0 20 20"><path d="M3 3v14h14"/><circle cx="7.5" cy="12" r="1.2"/><circle cx="11" cy="8.5" r="1.2"/><circle cx="14.5" cy="6" r="1.2"/></svg><span class="lbl">Scatter</span></button>
   <button class="ni" type="button" data-tab="compare" title="Compare"><svg viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="6" cy="15" r="1.6"/></svg><span class="lbl">Compare</span><span class="cnt" id="cnt-compare"></span></button>
   <button class="ni" type="button" data-tab="similar" title="Similar players"><svg viewBox="0 0 20 20"><circle cx="7" cy="7" r="3"/><circle cx="14" cy="13" r="3"/><path d="M9.5 9.5 11.5 11.5M2 16c.5-2.5 2-3.5 5-3.5M13 3c2.5 0 4 1.5 4.5 4"/></svg><span class="lbl">Similar players</span></button>
+  <button class="ni" type="button" data-tab="transfers" title="Transfer history"><svg viewBox="0 0 20 20"><path d="M3 6h12l-3-3M17 14H5l3 3"/><path d="M15 6v4M5 10v4"/></svg><span class="lbl">Transfer history</span></button>
   <button class="ni" type="button" data-tab="shortlist" title="Shortlist"><svg viewBox="0 0 20 20"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg><span class="lbl">Shortlist</span><span class="cnt" id="cnt-shortlist"></span></button>
   <div class="ng">Context</div>
   <button class="ni" type="button" data-tab="leagues" title="Leagues"><svg viewBox="0 0 20 20"><path d="M3 16h14M5 16V9M10 16V5M15 16v-4"/></svg><span class="lbl">Leagues</span></button>
@@ -1863,6 +1864,12 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <div class="scacts"><button class="btn primary" type="button" id="sc-add">Add to shortlist</button><button class="btn" type="button" id="sc-cmp">Compare top 4</button><button class="btn ghost" type="button" id="sc-clear">Clear</button></div>
       </div>
     </div>
+  </section>
+
+  <!-- TRANSFER HISTORY -->
+  <section class="view" id="v-transfers" hidden>
+    <div class="pagehead"><div><h1>Transfer History</h1><p>Player moves detected by comparing the same unique player ID across consecutive season imports. Only confirmed club changes are shown.</p></div></div>
+    <div id="th-root"></div>
   </section>
 
   <!-- SHORTLIST -->
@@ -4451,6 +4458,82 @@ document.addEventListener('change', async e => {
   toast(raw ? 'League multiplier saved' : 'Automatic league multiplier restored');
 });
 
+/* ---------------- Transfer history ---------------- */
+const TH = {loading:false, rows:[], signature:'', token:0, filter:'all'};
+function thDate(v){ const d=v?new Date(v):null; return d&&!Number.isNaN(d.getTime())?d.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'Import date unavailable'; }
+function thSafeDate(v){ const n=v?Date.parse(v):NaN; return Number.isFinite(n)?n:0; }
+function thSnapshots(){
+  const s=S.save;if(!s)return [];
+  return (s.seasons||[]).concat(s.history||[]).filter(x=>x&&x.ref).slice().sort((a,b)=>thSafeDate(a.imported)-thSafeDate(b.imported));
+}
+async function thBuild(){
+  const entries=thSnapshots(),signature=entries.map(x=>String(x.ref)+'|'+String(x.imported||'')+'|'+String(x.label||'')).join('::');
+  if(signature===TH.signature)return TH.rows;
+  const token=++TH.token, snapshots=[];
+  for(const entry of entries){
+    let obj=S.seasonCache.get(S.save.id+'|'+entry.label);
+    if(!obj||!obj.rows||!obj.cols)obj=await Store.getSeason(entry.ref);
+    if(token!==TH.token)return [];
+    if(!obj||!Array.isArray(obj.rows)||!Array.isArray(obj.cols))continue;
+    const ix=Object.fromEntries(obj.cols.map((c,i)=>[c,i]));
+    if(ix.UID==null||ix.Club==null||ix.Name==null)continue;
+    const seen=new Set(),players=new Map();
+    obj.rows.forEach(row=>{
+      const uid=String(row[ix.UID]||'').trim(),club=String(row[ix.Club]||'').trim();
+      if(!uid||!club||seen.has(uid))return;
+      seen.add(uid);
+      players.set(uid,{uid,name:String(row[ix.Name]||'Unknown player'),club,division:ix.Division==null?'':String(row[ix.Division]||''),position:ix.Position==null?'':String(row[ix.Position]||'')});
+    });
+    snapshots.push({entry,players});
+  }
+  if(token!==TH.token)return [];
+  const moves=[];
+  for(let i=1;i<snapshots.length;i++){
+    const before=snapshots[i-1],after=snapshots[i];
+    before.players.forEach((p,uid)=>{
+      const q=after.players.get(uid);
+      if(!q||p.club.toLocaleLowerCase()===q.club.toLocaleLowerCase())return;
+      moves.push({uid,name:q.name||p.name,from:p.club,to:q.club,division:q.division||p.division,position:q.position||p.position,fromSeason:before.entry.label,toSeason:after.entry.label,fromDate:before.entry.imported,toDate:after.entry.imported,fromImport:thDate(before.entry.imported),toImport:thDate(after.entry.imported),period:(before.entry.label===after.entry.label?'Between imports for '+after.entry.label:before.entry.label+' → '+after.entry.label),sortDate:thSafeDate(after.entry.imported)});
+    });
+  }
+  moves.sort((a,b)=>b.sortDate-a.sortDate||a.name.localeCompare(b.name));
+  TH.rows=moves;TH.signature=signature;return moves;
+}
+function renderTransferHistory(){
+  const root=$('th-root');if(!root)return;
+  if(!S.save){root.innerHTML='<div class="panel"><div class="grp"><p class="hint">Start a save and import at least two snapshots to build transfer history.</p></div></div>';return;}
+  if(TH.loading){root.innerHTML='<div class="panel"><div class="grp"><p class="hint">Comparing imported player records…</p></div></div>';return;}
+  TH.loading=true;root.innerHTML='<div class="panel"><div class="grp"><p class="hint">Comparing imported player records…</p></div></div>';
+  thBuild().then(rows=>{
+    TH.loading=false;if(S.tab!=='transfers')return;
+    const myClub=S.save&&S.save.myClub||'';
+    const incoming=rows.filter(x=>myClub&&x.to.toLocaleLowerCase()===myClub.toLocaleLowerCase()).length;
+    const outgoing=rows.filter(x=>myClub&&x.from.toLocaleLowerCase()===myClub.toLocaleLowerCase()).length;
+    root.innerHTML='<div class="grid g3" style="margin-bottom:14px">'+
+      '<div class="panel"><div class="grp"><small class="rl-sub">Detected moves</small><div class="h2">'+rows.length.toLocaleString()+'</div></div></div>'+
+      '<div class="panel"><div class="grp"><small class="rl-sub">Arrivals at '+esc(myClub||'My club')+'</small><div class="h2">'+incoming.toLocaleString()+'</div></div></div>'+
+      '<div class="panel"><div class="grp"><small class="rl-sub">Departures from '+esc(myClub||'My club')+'</small><div class="h2">'+outgoing.toLocaleString()+'</div></div></div></div>'+
+      '<div class="panel"><div class="grp"><div class="grid g3" style="align-items:end">'+
+      '<div class="field"><label for="th-direction">Movement</label><select id="th-direction"><option value="all">All detected moves</option><option value="incoming">Arrivals at my club</option><option value="outgoing">Departures from my club</option></select></div>'+
+      '<div class="field"><label for="th-search">Player or club</label><input id="th-search" type="search" placeholder="Search name, from or to club"></div>'+
+      '<div class="field"><label for="th-season">Season label</label><select id="th-season"><option value="">All periods</option>'+[...new Set(rows.map(x=>x.toSeason))].sort().reverse().map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('')+'</select></div></div></div>'+
+      '<div class="grp" style="padding-top:0"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px"><span class="hint" id="th-count"></span><span class="hint">Fees are not shown because the imports do not contain confirmed transaction fees.</span></div><div class="tablewrap"><table><thead><tr><th>Player</th><th>Position</th><th>From</th><th>To</th><th>Detected period</th></tr></thead><tbody id="th-body"></tbody></table></div><p class="hint" id="th-note" style="margin-top:10px"></p></div></div>';
+    const draw=()=>{
+      const dir=$('th-direction')?.value||'all',q=($('th-search')?.value||'').trim().toLocaleLowerCase(),season=$('th-season')?.value||'';
+      const filtered=rows.filter(x=>{
+        if(dir==='incoming'&&(!myClub||x.to.toLocaleLowerCase()!==myClub.toLocaleLowerCase()))return false;
+        if(dir==='outgoing'&&(!myClub||x.from.toLocaleLowerCase()!==myClub.toLocaleLowerCase()))return false;
+        if(season&&x.toSeason!==season)return false;
+        return !q||[x.name,x.from,x.to,x.position,x.division].join(' ').toLocaleLowerCase().includes(q);
+      });
+      $('th-count').textContent=filtered.length.toLocaleString()+' move'+(filtered.length===1?'':'s');
+      $('th-body').innerHTML=filtered.length?filtered.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="hint">UID '+esc(x.uid)+'</div></td><td>'+esc(x.position||'–')+'</td><td>'+esc(x.from)+'</td><td>'+esc(x.to)+'</td><td>'+esc(x.period)+'<div class="hint">'+esc(x.fromImport)+' → '+esc(x.toImport)+'</div></td></tr>').join(''):'<tr><td colspan="5" class="hint">No confirmed club changes match these filters.</td></tr>';
+      $('th-note').textContent=rows.length?'Moves are detected only when the same UID appears in two consecutive imports under different clubs. Players missing from either import are ignored. The date range is the import-to-import interval, not an exact transfer date.':'No moves detected yet. Import another season snapshot containing the same players to compare club changes. A single snapshot cannot establish transfer history.';
+    };
+    ['th-direction','th-season'].forEach(id=>$(id).addEventListener('change',draw));$('th-search').addEventListener('input',draw);draw();
+  }).catch(e=>{TH.loading=false;root.innerHTML='<div class="panel"><div class="grp"><p class="err">Could not build transfer history: '+esc(e.message||'unknown error')+'</p></div></div>';});
+}
+
 /* ---------------- Season progress ---------------- */
 // Moves the pool floor and the minute defaults that still sit on the old floor; filters the user changed are left alone
 function applyProgress(oldPM, oldPr){
@@ -4474,8 +4557,8 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','similar','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
-const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], similar:['Scouting','Similar Player Finder'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
+const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','similar','transfers','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
+const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], similar:['Scouting','Similar Player Finder'], transfers:['My club','Transfer history'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
   squad:['My club','Squad Assessment'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], recruitment:['My club','Recruitment plan'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
 function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
@@ -4488,7 +4571,7 @@ function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').class
 function renderTab(){ renderAppsNote();
   if (S.tab === 'manifesto') renderManifesto(); else if (S.tab === 'blueprint') renderBlueprint(); else if (S.tab === 'journal') renderJournal(); else if (S.tab === 'squad') renderSquadStats(); else if (S.tab === 'shortlist') renderShortlist(); else if (S.tab === 'philo') renderPhilo();
   navCounts();
-  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'similar') renderSimilar(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
+  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'similar') renderSimilar(); if (S.tab === 'transfers') renderTransferHistory(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.tagName === 'SECTION') return; e.preventDefault(); setTab(b.dataset.tab); });
 function navCounts(){ const c = $('cnt-compare'); if (c) c.textContent = cmpN() ? String(cmpN()) : ''; const sl = $('cnt-shortlist'); if (sl){ const n = S.save ? ((S.save.shortlist || []).length + (S.save.prospects || []).length) : 0; sl.textContent = n ? String(n) : ''; } }
 
