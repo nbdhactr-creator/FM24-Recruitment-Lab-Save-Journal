@@ -1607,6 +1607,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="dof" title="DoF picks"><svg viewBox="0 0 20 20"><path d="M4 16.5V8.5M10 16.5V3.5M16 16.5V11"/><path d="M2.5 16.5h15"/></svg><span class="lbl">DoF picks</span></button>
   <button class="ni" type="button" data-tab="scatter" title="Scatter"><svg viewBox="0 0 20 20"><path d="M3 3v14h14"/><circle cx="7.5" cy="12" r="1.2"/><circle cx="11" cy="8.5" r="1.2"/><circle cx="14.5" cy="6" r="1.2"/></svg><span class="lbl">Scatter</span></button>
   <button class="ni" type="button" data-tab="compare" title="Compare"><svg viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="6" cy="15" r="1.6"/></svg><span class="lbl">Compare</span><span class="cnt" id="cnt-compare"></span></button>
+  <button class="ni" type="button" data-tab="similar" title="Similar players"><svg viewBox="0 0 20 20"><circle cx="7" cy="7" r="3"/><circle cx="14" cy="13" r="3"/><path d="M9.5 9.5 11.5 11.5M2 16c.5-2.5 2-3.5 5-3.5M13 3c2.5 0 4 1.5 4.5 4"/></svg><span class="lbl">Similar players</span></button>
   <button class="ni" type="button" data-tab="shortlist" title="Shortlist"><svg viewBox="0 0 20 20"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg><span class="lbl">Shortlist</span><span class="cnt" id="cnt-shortlist"></span></button>
   <div class="ng">Context</div>
   <button class="ni" type="button" data-tab="leagues" title="Leagues"><svg viewBox="0 0 20 20"><path d="M3 16h14M5 16V9M10 16V5M15 16v-4"/></svg><span class="lbl">Leagues</span></button>
@@ -1806,6 +1807,15 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
     </div>
     <p class="hint" id="cmpfoot" style="margin-top:12px;max-width:110ch"></p>
     <div id="cmpbody" hidden></div><div id="chips" hidden></div>
+  </section>
+
+  <!-- SIMILAR PLAYER FINDER -->
+  <section class="view" id="v-similar" hidden>
+    <div class="pagehead"><div><h1>Similar Player Finder</h1><p>Find players with the closest statistical profile to a player you choose. Similarity and role quality are scored separately.</p></div><div class="acts"><div class="field"><label for="sp-role">Role lens</label><select id="sp-role"></select></div><div class="field search"><label for="sp-search">Reference player</label><input id="sp-search" type="search" placeholder="Search a player" autocomplete="off"><div class="sugg" id="sp-sugg" hidden></div></div></div></div>
+    <div class="panel" id="sp-empty"><div class="ph"><h2>Choose a reference player</h2></div><p class="hint">Search for a player. The finder compares players in the same positional group using the selected role’s exported performance statistics.</p></div>
+    <div id="sp-work" hidden><div class="sp-nav" style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px;margin:14px 0;border:1px solid var(--line);border-radius:14px;background:var(--panel)"><div><span class="eyebrow">REFERENCE PLAYER</span><div id="sp-reference"></div></div><div class="sp-controls" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn" id="sp-prev" type="button">Previous match</button><span id="sp-count" class="hint"></span><button class="btn primary" id="sp-next" type="button">Next best match</button><button class="btn" id="sp-shortlist" type="button">Add alternative to shortlist</button></div></div>
+    <div class="panel"><div class="ph"><h2 id="sp-candidate-title">Closest alternative</h2><span id="sp-similarity"></span></div><div id="sp-candidate"></div></div>
+    <div class="panel" style="margin-top:14px"><div class="ph"><h2>Stat-by-stat comparison</h2><span>Raw season rates and percentiles within the same positional group</span></div><div class="rfwrap"><table class="rf" id="sp-table"></table></div></div><p class="hint" id="sp-foot"></p></div>
   </section>
 
   <!-- SCATTER -->
@@ -3453,6 +3463,29 @@ $('reset').addEventListener('click', () => applyRole(S.role));
 $('adj').addEventListener('change', () => { clearCaches(); renderTab(); });
 let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if (S.tab === 'explore') render(); }, 90); }).observe(els.chart);
 
+/* ---------------- Similar Player Finder ---------------- */
+const SP = {refKey:null, matches:[], index:0, roleId:null};
+function spRole(){ return roleById[$('sp-role').value] || roleById[S.role] || ROLES[0]; }
+function spSetReference(p){ if (!p) return; SP.refKey=p.key; const st=mainStrata(p); let role=roleById[$('sp-role').value]; if (!role || role.strata!==st){ role=ROLES.find(r=>r.strata===st) || ROLES[0]; $('sp-role').value=role.id; } SP.roleId=role.id; SP.index=0; spBuild(); setTab('similar'); }
+function spBuild(){ const ref=playerByKey(SP.refKey), role=spRole(); if (!ref){ $('sp-empty').hidden=false; $('sp-work').hidden=true; return; }
+ const keys=TPL[role.tpl].stats.map(x=>x[0]), minCoverage=Math.max(3,Math.ceil(keys.length*.6)); const refPct=new Map(keys.map(k=>[k,statPct(ref,k,role.strata)])), refCount=keys.filter(k=>refPct.get(k)!=null).length, out=[];
+ const pool=S.season.players.filter(p=>p.key!==ref.key&&inStrata(p,role.strata)&&(p.mins||0)>=POOL_MIN);
+ for (const p of pool){ let dist=0,n=0; for (const k of keys){ const a=refPct.get(k),b=statPct(p,k,role.strata); if(a==null||b==null)continue; dist+=Math.abs(a-b); n++; } if(n<minCoverage||n<Math.ceil(refCount*.6))continue; out.push({p,similarity:Math.max(0,Math.round(100-dist/n)),coverage:n,score:roleScore(p,role),distance:dist/n}); }
+ out.sort((a,b)=>b.similarity-a.similarity||(b.score??-1)-(a.score??-1)||(b.p.mins||0)-(a.p.mins||0)); SP.matches=out; SP.index=0; SP.roleId=role.id; $('sp-empty').hidden=true; $('sp-work').hidden=false;
+ $('sp-reference').innerHTML='<div class="sp-player"><strong>'+esc(ref.name)+'</strong><span>'+esc(ref.club)+' · '+esc(ref.div)+' · '+esc(ref.pos)+'</span><small>'+esc(ref.age??'–')+' yrs · '+Math.round(ref.mins||0).toLocaleString()+' mins · Role score '+(roleScore(ref,role)??'–')+'</small></div>'; renderSimilar(); }
+function renderSimilar(){ const ref=playerByKey(SP.refKey), role=spRole(); if(!ref)return; if(SP.roleId!==role.id){SP.roleId=role.id;spBuild();return;} const m=SP.matches[SP.index];
+ $('sp-count').textContent=m?(SP.index+1)+' of '+SP.matches.length:'No matches'; $('sp-prev').disabled=!m||SP.index<=0; $('sp-next').disabled=!m||SP.index>=SP.matches.length-1; $('sp-shortlist').disabled=!m;
+ if(!m){ $('sp-candidate-title').textContent='No comparable players found'; $('sp-similarity').textContent=''; $('sp-candidate').innerHTML='<p class="hint">No player had enough shared statistics and minutes to make a fair comparison. Try another role or reference player.</p>'; $('sp-table').innerHTML=''; $('sp-foot').textContent='A minimum of 60% of role-template statistics must be available for both players.'; return; }
+ const p=m.p, base=roleScore(ref,role), delta=m.score==null||base==null?null:m.score-base; $('sp-candidate-title').textContent='Alternative '+(SP.index+1); $('sp-similarity').textContent=m.similarity+'% statistical similarity · '+m.coverage+' shared stats';
+ $('sp-candidate').innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;padding:8px 0;flex-wrap:wrap"><div class="sp-player"><strong>'+esc(p.name)+'</strong><span>'+esc(p.club)+' · '+esc(p.div)+' · '+esc(p.pos)+'</span><small>'+esc(p.age??'–')+' yrs · '+Math.round(p.mins||0).toLocaleString()+' mins</small></div><div style="display:flex;gap:18px;flex-wrap:wrap"><div><b>'+(m.score??'–')+'</b><small>Role score</small></div><div><b>'+(delta==null?'–':(delta>0?'+':'')+delta)+'</b><small>Vs reference</small></div><div><b>'+esc(valueTxt(p))+'</b><small>Market value</small></div></div></div>';
+ let html='<thead><tr><th>Statistic</th><th>Reference</th><th>Alternative</th><th>Difference</th></tr></thead><tbody>';
+ for(const k of TPL[role.tpl].stats.map(x=>x[0])){ const a=floorOK(ref,k)?statVal(ref,k):null,b=floorOK(p,k)?statVal(p,k):null,ap=statPct(ref,k,role.strata),bp=statPct(p,k,role.strata),diff=a==null||b==null?null:b-a,better=diff==null?false:(dirOf(k)<0?diff<0:diff>0); html+='<tr><td>'+esc(sLabel(k))+'</td><td>'+statShow(a,k)+' <small class="pclub">'+(ap==null?'–':Math.round(ap)+'th pct')+'</small></td><td>'+statShow(b,k)+' <small class="pclub">'+(bp==null?'–':Math.round(bp)+'th pct')+'</small></td><td class="'+(diff==null?'':better?'b':'')+'">'+(diff==null?'–':(diff>0?'+':'')+statShow(diff,k))+'</td></tr>'; }
+ $('sp-table').innerHTML=html+'</tbody>'; $('sp-foot').textContent='Candidates are ranked by percentile-profile similarity, not overall quality. Role score is shown separately; higher similarity does not mean the alternative is better. Percentiles use the same positional pool and league-adjustment setting as the Lab.'; }
+$('sp-role').innerHTML=roleOptions(S.role); $('sp-search').addEventListener('input',()=>suggestPlayers($('sp-search'),$('sp-sugg'),spSetReference));
+$('sp-search').addEventListener('keydown',e=>{if(e.key==='Enter'){const b=$('sp-sugg').querySelector('button[data-key]');if(b){e.preventDefault();b.click();}}if(e.key==='Escape')$('sp-sugg').hidden=true;});
+$('sp-role').addEventListener('change',()=>{if(SP.refKey){SP.roleId=$('sp-role').value;spBuild();}}); $('sp-prev').addEventListener('click',()=>{if(SP.index>0){SP.index--;renderSimilar();}});
+$('sp-next').addEventListener('click',()=>{if(SP.index<SP.matches.length-1){SP.index++;renderSimilar();}}); $('sp-shortlist').addEventListener('click',()=>{const m=SP.matches[SP.index];if(m)slAdd([m.p]).then(n=>slToggleMsg(n,1));});
+
 /* ---------------- Comparison ---------------- */
 // Compared players hold fixed slots A–D. A slot keeps its letter and colour until that player is removed.
 const LETTERS = ['A','B','C','D'];
@@ -4383,8 +4416,8 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
-const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
+const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','similar','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
+const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], similar:['Scouting','Similar Player Finder'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
   squad:['My club','Squad Assessment'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], recruitment:['My club','Recruitment plan'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
 function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
@@ -4397,7 +4430,7 @@ function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').class
 function renderTab(){ renderAppsNote();
   if (S.tab === 'manifesto') renderManifesto(); else if (S.tab === 'blueprint') renderBlueprint(); else if (S.tab === 'journal') renderJournal(); else if (S.tab === 'squad') renderSquadStats(); else if (S.tab === 'shortlist') renderShortlist(); else if (S.tab === 'philo') renderPhilo();
   navCounts();
-  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
+  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'similar') renderSimilar(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.tagName === 'SECTION') return; e.preventDefault(); setTab(b.dataset.tab); });
 function navCounts(){ const c = $('cnt-compare'); if (c) c.textContent = cmpN() ? String(cmpN()) : ''; const sl = $('cnt-shortlist'); if (sl){ const n = S.save ? ((S.save.shortlist || []).length + (S.save.prospects || []).length) : 0; sl.textContent = n ? String(n) : ''; } }
 
