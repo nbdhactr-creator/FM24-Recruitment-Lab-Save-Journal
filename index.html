@@ -3480,7 +3480,7 @@ let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if 
 /* ---------------- Similar Player Finder ---------------- */
 const SP = {refKey:null, matches:[], index:0, roleId:null};
 function spRole(){ return roleById[$('sp-role').value] || roleById[S.role] || ROLES[0]; }
-function spSetReference(p){ if (!p) return; SP.refKey=p.key; const st=mainStrata(p); let role=roleById[$('sp-role').value]; if (!role || role.strata!==st){ role=ROLES.find(r=>r.strata===st) || ROLES[0]; $('sp-role').value=role.id; } SP.roleId=role.id; SP.index=0; spBuild(); setTab('similar'); }
+function spSetReference(p){ if (!p) return; SP.refKey=p.key; SP.matches=[]; SP.index=0; const st=mainStrata(p); let role=roleById[$('sp-role').value]; if (!role || role.strata!==st){ role=ROLES.find(r=>r.strata===st) || ROLES[0]; $('sp-role').value=role.id; } SP.roleId=role.id; SP.index=0; spBuild(); setTab('similar'); }
 function spReadFilters(){ const read=id=>{const v=$(id).value.trim();return v===''?null:Number(v);}; return {ageMin:read('sp-age-min'),ageMax:read('sp-age-max'),valueMax:read('sp-value-max'),wageMax:read('sp-wage-max'),minutes:Math.max(POOL_MIN,read('sp-minutes')??POOL_MIN)}; }
 function spBuild(){ const ref=playerByKey(SP.refKey), role=spRole(); if (!ref){ $('sp-empty').hidden=false; $('sp-work').hidden=true; return; }
  const keepKey=SP.matches[SP.index]?.p.key, f=spReadFilters(), weights=roleEffectiveWeights(role), keys=Object.keys(weights), minCoverage=Math.max(3,Math.ceil(keys.length*.6)); const refPct=new Map(keys.map(k=>[k,statPct(ref,k,role.strata)])), refCount=keys.filter(k=>refPct.get(k)!=null).length, out=[];
