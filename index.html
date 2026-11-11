@@ -3483,7 +3483,7 @@ function renderSimilar(){ const ref=playerByKey(SP.refKey), role=spRole(); if(!r
  $('sp-table').innerHTML=html+'</tbody>'; $('sp-foot').textContent='Candidates are ranked by percentile-profile similarity, not overall quality. Role score is shown separately; higher similarity does not mean the alternative is better. Percentiles use the same positional pool and league-adjustment setting as the Lab.'; }
 $('sp-role').innerHTML=roleOptions(S.role); $('sp-search').addEventListener('input',()=>suggestPlayers($('sp-search'),$('sp-sugg'),spSetReference));
 $('sp-search').addEventListener('keydown',e=>{if(e.key==='Enter'){const b=$('sp-sugg').querySelector('button[data-key]');if(b){e.preventDefault();b.click();}}if(e.key==='Escape')$('sp-sugg').hidden=true;});
-$('sp-role').addEventListener('change',()=>{if(SP.refKey){SP.roleId=$('sp-role').value;spBuild();}}); $('sp-prev').addEventListener('click',()=>{if(SP.index>0){SP.index--;renderSimilar();}});
+$('sp-role').addEventListener('change',()=>{if(SP.refKey){const ref=playerByKey(SP.refKey),next=spRole();if(ref&&next.strata!==mainStrata(ref)){toast('Choose a role from '+(STRATA[mainStrata(ref)]?.label||'the reference player\'s positional group')+'.');$('sp-role').value=SP.roleId;return;}SP.roleId=next.id;spBuild();}}); $('sp-prev').addEventListener('click',()=>{if(SP.index>0){SP.index--;renderSimilar();}});
 $('sp-next').addEventListener('click',()=>{if(SP.index<SP.matches.length-1){SP.index++;renderSimilar();}}); $('sp-shortlist').addEventListener('click',()=>{const m=SP.matches[SP.index];if(m)slAdd([m.p]).then(n=>slToggleMsg(n,1));});
 
 /* ---------------- Comparison ---------------- */
