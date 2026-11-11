@@ -1609,6 +1609,8 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <button class="ni" type="button" data-tab="compare" title="Compare"><svg viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12"/><circle cx="8" cy="5" r="1.6"/><circle cx="13" cy="10" r="1.6"/><circle cx="6" cy="15" r="1.6"/></svg><span class="lbl">Compare</span><span class="cnt" id="cnt-compare"></span></button>
   <button class="ni" type="button" data-tab="similar" title="Similar players"><svg viewBox="0 0 20 20"><circle cx="7" cy="7" r="3"/><circle cx="14" cy="13" r="3"/><path d="M9.5 9.5 11.5 11.5M2 16c.5-2.5 2-3.5 5-3.5M13 3c2.5 0 4 1.5 4.5 4"/></svg><span class="lbl">Similar players</span></button>
   <button class="ni" type="button" data-tab="transfers" title="Transfer history"><svg viewBox="0 0 20 20"><path d="M3 6h12l-3-3M17 14H5l3 3"/><path d="M15 6v4M5 10v4"/></svg><span class="lbl">Transfer history</span></button>
+  <button class="ni" type="button" data-tab="contracts" title="Contract &amp; free agents"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M6 7h8M6 10h5M6 13h8"/></svg><span class="lbl">Contract &amp; free agents</span></button>
+  <button class="ni" type="button" data-tab="youthmarket" title="Youth market"><svg viewBox="0 0 20 20"><circle cx="10" cy="6" r="3"/><path d="M4 17c.4-3.2 2.4-5 6-5s5.6 1.8 6 5"/></svg><span class="lbl">Youth market</span></button>
   <button class="ni" type="button" data-tab="shortlist" title="Shortlist"><svg viewBox="0 0 20 20"><path d="M10 2.5l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 7.8l5-.7z"/></svg><span class="lbl">Shortlist</span><span class="cnt" id="cnt-shortlist"></span></button>
   <div class="ng">Context</div>
   <button class="ni" type="button" data-tab="leagues" title="Leagues"><svg viewBox="0 0 20 20"><path d="M3 16h14M5 16V9M10 16V5M15 16v-4"/></svg><span class="lbl">Leagues</span></button>
@@ -1870,6 +1872,18 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
   <section class="view" id="v-transfers" hidden>
     <div class="pagehead"><div><h1>Transfer History</h1><p>Player moves detected by comparing the same unique player ID across consecutive season imports. Only confirmed club changes are shown.</p></div></div>
     <div id="th-root"></div>
+  </section>
+
+  <!-- CONTRACT & FREE AGENT MARKET -->
+  <section class="view" id="v-contracts" hidden>
+    <div class="pagehead"><div><h1>Contract &amp; Free Agent Market</h1><p>Find senior players approaching the end of their contracts and unattached players. Rankings use the selected role’s existing performance score.</p></div></div>
+    <div id="contract-market-root"></div>
+  </section>
+
+  <!-- YOUTH MARKET -->
+  <section class="view" id="v-youthmarket" hidden>
+    <div class="pagehead"><div><h1>Youth Market</h1><p>Find under-21 players by contract status and rank them against the selected tactical role using available performance evidence.</p></div></div>
+    <div id="youth-market-root"></div>
   </section>
 
   <!-- SHORTLIST -->
@@ -4533,6 +4547,112 @@ function renderTransferHistory(){
   }).catch(e=>{TH.loading=false;root.innerHTML='<div class="panel"><div class="grp"><p class="err">Could not build transfer history: '+esc(e.message||'unknown error')+'</p></div></div>';});
 }
 
+/* ---------------- Contract and youth markets ---------------- */
+const CM={mode:{senior:'6',youth:'6'},role:{senior:'',youth:''},clubKey:{senior:'',youth:''},pos:{senior:'all',youth:'all'},minM:{senior:600,youth:300},sort:{senior:'score',youth:'score'},q:{senior:'',youth:''}};
+function cmClubKey(t){return norm(t.club)+'|'+norm(t.div);}
+function cmClubs(){return teamRows().filter(t=>t.club).sort((a,b)=>a.club.localeCompare(b.club)||a.div.localeCompare(b.div));}
+function cmSelectedClub(kind,clubs){
+  const key=CM.clubKey[kind];
+  if(key&&clubs.some(t=>cmClubKey(t)===key))return key;
+  const mine=clubs.find(t=>norm(t.club)===norm(S.save&&S.save.myClub)&&(!S.save.myLeague||norm(t.div)===norm(S.save.myLeague)));
+  const fallback=mine||null;
+  if(!key&&fallback){CM.clubKey[kind]=cmClubKey(fallback);return CM.clubKey[kind];}
+  return key||'';
+}
+function cmDate(v){
+  const m=String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){const d=new Date(+m[3],+m[2]-1,+m[1]);return d.getFullYear()===+m[3]&&d.getMonth()===+m[2]-1&&d.getDate()===+m[1]?d:null;}
+  return null;
+}
+function cmExpiry(p){return cmDate(p.expires);}
+function cmAddMonths(d,n){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());const day=x.getDate();x.setMonth(x.getMonth()+n);if(x.getDate()<day)x.setDate(0);return x;}
+function cmFreeAgent(p){return /^(free transfer|free agent|free agents|unattached|without club|no club)$/i.test(String(p.club||'').trim());}
+function cmPosMatch(p,v){
+  if(v==='all')return true;
+  if(v==='GK')return p.slots.has('GK');
+  if(v==='DEF')return [...p.slots].some(x=>x.startsWith('D-'));
+  if(v==='MID')return [...p.slots].some(x=>x==='DM'||x.startsWith('M-')||x.startsWith('AM-'));
+  if(v==='FWD')return p.slots.has('ST');
+  return true;
+}
+function cmBuild(kind){
+  const role=roleById[CM.role[kind]]||roleById[S.role]||ROLES[0],asOf=cmDate($('cm-date-'+kind)?.value),mode=CM.mode[kind];
+  if(!CM.role[kind])CM.role[kind]=role.id;
+  const minM=Math.max(0,num($('cm-mins-'+kind)?.value)??CM.minM[kind]),pos=CM.pos[kind],q=norm(CM.q[kind]);
+  const limit6=asOf?cmAddMonths(asOf,6):null,limit12=asOf?cmAddMonths(asOf,12):null;
+  const out=[];
+  for(const p of S.season.players){
+    if(kind==='youth'&&(p.age==null||p.age>=21))continue;
+    if(!inStrata(p,role.strata)||!cmPosMatch(p,pos)||(p.mins||0)<minM)continue;
+    const free=cmFreeAgent(p),expiry=cmExpiry(p);
+    if(mode==='free'?!free:(!expiry||!asOf||expiry<=asOf||(mode==='6'?expiry>limit6:expiry>limit12)))continue;
+    if(q&&!norm([p.name,p.club,p.div,p.pos,p.nat].join(' ')).includes(q))continue;
+    const score=roleScore(p,role);
+    out.push({p,score,expiry,free});
+  }
+  const sort=CM.sort[kind];
+  out.sort((a,b)=>{
+    if(sort==='age')return (a.p.age??999)-(b.p.age??999)||((b.score??-1)-(a.score??-1));
+    if(sort==='value')return (a.p.val??Infinity)-(b.p.val??Infinity)||((b.score??-1)-(a.score??-1));
+    if(sort==='wage')return (a.p.wage??Infinity)-(b.p.wage??Infinity)||((b.score??-1)-(a.score??-1));
+    if(sort==='rating')return (b.p.s['Av Rat']??-1)-(a.p.s['Av Rat']??-1)||((b.score??-1)-(a.score??-1));
+    return (b.score??-1)-(a.score??-1)||(b.p.s['Av Rat']??-1)-(a.p.s['Av Rat']??-1)||(b.p.mins||0)-(a.p.mins||0);
+  });
+  return {role,asOf,limit6,limit12,out,minM};
+}
+function cmDateValue(kind){return S.save&&S.save.contractMarketDate||'';}
+function renderContractMarket(youth){
+  const kind=youth?'youth':'senior',root=$(youth?'youth-market-root':'contract-market-root');
+  if(!root)return;
+  if(!S.season){root.innerHTML='<div class="panel"><p class="hint">Import a season first to use the player market.</p></div>';return;}
+  const clubs=cmClubs(),selected=cmSelectedClub(kind,clubs),club=clubs.find(t=>cmClubKey(t)===selected),role=roleById[CM.role[kind]]||roleById[S.role]||ROLES[0];
+  const mode=CM.mode[kind],dateVal=cmDateValue(kind),minM=CM.minM[kind];
+  const label=youth?'Youth Market':'Contract & Free Agent Market';
+  root.innerHTML='<div class="panel" style="margin-bottom:14px"><div class="grp"><div class="grid g4" style="align-items:end">'+
+    '<div class="field"><label for="cm-club-'+kind+'">Club / competition context</label><select id="cm-club-'+kind+'"><option value="">Choose a club</option>'+clubs.map(t=>'<option value="'+esc(cmClubKey(t))+'"'+(selected===cmClubKey(t)?' selected':'')+'>'+esc(t.club+' — '+(t.div||'Unknown competition'))+'</option>').join('')+'</select></div>'+
+    '<div class="field"><label for="cm-role-'+kind+'">Role to recruit for</label><select id="cm-role-'+kind+'">'+roleOptions(role.id)+'</select></div>'+
+    '<div class="field"><label for="cm-pos-'+kind+'">Position group</label><select id="cm-pos-'+kind+'"><option value="all">All positions in role</option><option value="GK">Goalkeeper</option><option value="DEF">Defence</option><option value="MID">Midfield</option><option value="FWD">Attack</option></select></div>'+
+    '<div class="field"><label for="cm-date-'+kind+'">Your in-game date</label><input id="cm-date-'+kind+'" type="date" value="'+esc(dateVal)+'"></div></div>'+
+    '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" id="cm-setclub-'+kind+'">Set selected club as My Club</button><span class="hint">'+(club?'Scoring context: '+esc(club.club)+' · '+esc(club.div):'Choose a club to set your recruitment context')+'</span></div>'+
+    '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn '+(mode==='6'?'primary':'')+'" type="button" data-cm-mode="6">Expiring within 6 months</button><button class="btn '+(mode==='12'?'primary':'')+'" type="button" data-cm-mode="12">Expiring within 12 months</button><button class="btn '+(mode==='free'?'primary':'')+'" type="button" data-cm-mode="free">Free agents</button></div>'+
+    '<div class="grid g3" style="margin-top:12px;align-items:end"><div class="field"><label for="cm-mins-'+kind+'">Minimum minutes</label><input id="cm-mins-'+kind+'" type="number" min="0" step="50" value="'+minM+'"></div><div class="field"><label for="cm-sort-'+kind+'">Sort results</label><select id="cm-sort-'+kind+'"><option value="score">Role score: highest first</option><option value="rating">Average rating: highest first</option><option value="age">Age: youngest first</option><option value="value">Transfer value: lowest first</option><option value="wage">Wage: lowest first</option></select></div><div class="field"><label for="cm-search-'+kind+'">Search player or club</label><input id="cm-search-'+kind+'" type="search" value="'+esc(CM.q[kind])+'" placeholder="Search name, club or nationality"></div></div></div></div>'+
+    '<div class="panel"><div class="phead"><div><h2>'+label+'</h2><p class="hint">'+(youth?'Under-21 players only.':'Senior market; no age cap.')+' Role scores are based on the selected role and exported performance data.</p></div><div class="h2" id="cm-count-'+kind+'">—</div></div><div id="cm-results-'+kind+'"></div><p class="hint" id="cm-note-'+kind+'" style="margin:10px 16px 16px"></p></div>';
+  $('cm-pos-'+kind).value=CM.pos[kind];$('cm-sort-'+kind).value=CM.sort[kind];
+  const date=$('cm-date-'+kind);
+  if(date)date.addEventListener('change',async()=>{if(S.save){S.save.contractMarketDate=date.value;await persist();}cmDraw(kind,youth);});
+  $('cm-club-'+kind).addEventListener('change',e=>{CM.clubKey[kind]=e.target.value;renderContractMarket(youth);});
+  $('cm-role-'+kind).addEventListener('change',e=>{CM.role[kind]=e.target.value;cmDraw(kind,youth);});
+  $('cm-pos-'+kind).addEventListener('change',e=>{CM.pos[kind]=e.target.value;cmDraw(kind,youth);});
+  $('cm-mins-'+kind).addEventListener('change',e=>{CM.minM[kind]=Math.max(0,num(e.target.value)||0);cmDraw(kind,youth);});
+  $('cm-sort-'+kind).addEventListener('change',e=>{CM.sort[kind]=e.target.value;cmDraw(kind,youth);});
+  $('cm-search-'+kind).addEventListener('input',e=>{CM.q[kind]=e.target.value;cmDraw(kind,youth);});
+  root.onclick=async e=>{
+    const modeBtn=e.target.closest('[data-cm-mode]');
+    if(modeBtn){CM.mode[kind]=modeBtn.dataset.cmMode;renderContractMarket(youth);return;}
+    const add=e.target.closest('[data-cm-add]');
+    if(add){const p=S.season.players.find(x=>x.key===add.dataset.cmAdd);if(p){const n=await slAdd([p],'first');slToggleMsg(n,1,'first');add.textContent=n?'Added':'On shortlist';add.disabled=true;}return;}
+    if(e.target.closest('#cm-setclub-'+kind)){
+      const chosen=clubs.find(t=>cmClubKey(t)===CM.clubKey[kind]);
+      if(!chosen){toast('Choose a club first.');return;}
+      S.save.myClub=chosen.club;S.save.myLeague=chosen.div;await persist();fillSaveSelect();toast('My Club set to '+chosen.club);renderContractMarket(youth);return;
+    }
+  };
+  cmDraw(kind,youth);
+}
+function cmDraw(kind,youth){
+  const root=$('cm-results-'+kind);if(!root)return;
+  const built=cmBuild(kind),mode=CM.mode[kind],dateRequired=mode!=='free'&&!built.asOf;
+  $('cm-count-'+kind).textContent=dateRequired?'Set date':built.out.length.toLocaleString();
+  if(dateRequired){root.innerHTML='<div class="grp"><p class="hint">Enter your current in-game date above. The 6- and 12-month buttons calculate expiry windows from that date, rather than guessing from the season label.</p></div>'; $('cm-note-'+kind).textContent='Free-agent results do not require an in-game date.';return;}
+  const rows=built.out;
+  root.innerHTML=rows.length?'<div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th>Position</th><th class="num">Age</th><th class="num">Role score</th><th class="num">Minutes</th><th>Value / wage</th><th>Contract expiry</th><th></th></tr></thead><tbody>'+rows.map((x,i)=>{
+    const p=x.p,score=x.score,expiry=x.expiry?x.expiry.toLocaleDateString('en-GB'):'—',already=slHas(p.key);
+    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'<div class="pclub">'+esc(p.wageTxt||'Wage unavailable')+'</div></td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
+  }).join('')+'</tbody></table></div>':'<div class="grp"><p class="hint">No players match this view and its filters.</p></div>';
+  const base=mode==='free'?'Players explicitly listed as Free Transfer, Free Agent or Unattached.': 'Contract dates between '+built.asOf.toLocaleDateString('en-GB')+' and '+(mode==='6'?built.limit6:built.limit12).toLocaleDateString('en-GB')+'.';
+  $('cm-note-'+kind).textContent=base+' Results are ranked by role score; players without enough statistical coverage are shown below scored players. Transfer value is not a transfer fee. Only the latest imported season is searched.';
+}
+
 /* ---------------- Season progress ---------------- */
 // Moves the pool floor and the minute defaults that still sit on the old floor; filters the user changed are left alone
 function applyProgress(oldPM, oldPr){
@@ -4556,8 +4676,8 @@ function renderAppsNote(){ const el = $('seasonnote'); if (!el) return;
 
 /* ---------------- Tabs ---------------- */
 const FREE_TABS = new Set(['guide','shortlist','philo']);
-const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','similar','transfers','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
-const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], similar:['Scouting','Similar Player Finder'], transfers:['My club','Transfer history'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
+const ALL_TABS = new Set(['squad','home','dof','philo','clubs','teams','explore','scatter','compare','similar','transfers','contracts','youthmarket','shortlist','tactic','recruitment','teamcompare','bench','leagues','guide']);
+const TAB_INFO = {home:['Overview','Home'], dof:['Scouting','DoF picks'], philo:['My club','Philosophy score'], clubs:['My club','Club finder'], teams:['Context','Team intelligence'], explore:['Scouting','Explore'], scatter:['Scouting','Scatter'], compare:['Scouting','Compare'], similar:['Scouting','Similar Player Finder'], transfers:['My club','Transfer history'], contracts:['Scouting','Contract & Free Agents'], youthmarket:['Scouting','Youth Market'], shortlist:['Scouting','Shortlist'], leagues:['Context','Leagues'], bench:['Context','Benchmarks'],
   squad:['My club','Squad Assessment'], tactic:['My club','Tactic & best XI'], teamcompare:['My club','Team comparison'], recruitment:['My club','Recruitment plan'], journal:['My club','Journal'], manifesto:['Philosophy','Manifesto'], blueprint:['Philosophy','Blueprint'], guide:['Help','Guide']};
 function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').classList.toggle('wide', t === 'home' || t === 'dof' || t === 'philo' || t === 'clubs' || t === 'teams'); try { localStorage.setItem('rlabp-tab', t); } catch(e){}
   document.querySelectorAll('.side [data-tab], .bnav [data-tab]').forEach(b => { if (b.classList.contains('logo') || b.id === 'avatar') return; if (b.dataset.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
@@ -4570,7 +4690,7 @@ function setTab(t){ if (!ALL_TABS.has(t)) t = 'home'; S.tab = t; $('main').class
 function renderTab(){ renderAppsNote();
   if (S.tab === 'manifesto') renderManifesto(); else if (S.tab === 'blueprint') renderBlueprint(); else if (S.tab === 'journal') renderJournal(); else if (S.tab === 'squad') renderSquadStats(); else if (S.tab === 'shortlist') renderShortlist(); else if (S.tab === 'philo') renderPhilo();
   navCounts();
-  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'similar') renderSimilar(); if (S.tab === 'transfers') renderTransferHistory(); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
+  if (!S.season) return; if (S.tab === 'home') renderHome(); if (S.tab === 'dof') renderDof(); if (S.tab === 'clubs') renderClubs(); if (S.tab === 'teams') renderTeamIntelligence(); if (S.tab === 'explore') render(); if (S.tab === 'compare') renderCmp(); if (S.tab === 'similar') renderSimilar(); if (S.tab === 'transfers') renderTransferHistory(); if (S.tab === 'contracts') renderContractMarket(false); if (S.tab === 'youthmarket') renderContractMarket(true); if (S.tab === 'scatter') renderScatter(); if (S.tab === 'tactic') renderTactic(); if (S.tab === 'recruitment') renderRecruitmentPlan(); if (S.tab === 'teamcompare') renderTeamComparison(); if (S.tab === 'bench') renderBench(); if (S.tab === 'leagues') renderLeagues(); renderCmpBar(); }
 document.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b || b.tagName === 'SECTION') return; e.preventDefault(); setTab(b.dataset.tab); });
 function navCounts(){ const c = $('cnt-compare'); if (c) c.textContent = cmpN() ? String(cmpN()) : ''; const sl = $('cnt-shortlist'); if (sl){ const n = S.save ? ((S.save.shortlist || []).length + (S.save.prospects || []).length) : 0; sl.textContent = n ? String(n) : ''; } }
 
