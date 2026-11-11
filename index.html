@@ -4596,20 +4596,20 @@ function cmBuild(kind){
     out.push({p,score,expiry,free});
   }
   const sort=CM.sort[kind],dir=CM.dir[kind]==='asc'?1:-1;
-  const textCmp=(x,y)=>String(x??'').localeCompare(String(y??''),undefined,{numeric:true,sensitivity:'base'});
-  const numCmp=(x,y)=>{const a=Number.isFinite(x)?x:null,b=Number.isFinite(y)?y:null;return a==null?(b==null?0:1):b==null?-1:a-b;};
+  const cmp=(x,y,isText)=>{const ax=x==null||x==='',by=y==null||y==='';if(ax||by)return ax?(by?0:1):-1;const c=isText?String(x).localeCompare(String(y),undefined,{numeric:true,sensitivity:'base'}):Number(x)-Number(y);return c*dir;};
+  const tie=(a,b)=>((b.score??-1)-(a.score??-1))||((b.p.mins||0)-(a.p.mins||0))||String(a.p.name||'').localeCompare(String(b.p.name||''));
   out.sort((a,b)=>{
     let c=0;
-    if(sort==='name')c=textCmp(a.p.name,b.p.name);
-    else if(sort==='position')c=textCmp(a.p.pos,b.p.pos);
-    else if(sort==='age')c=numCmp(a.p.age,b.p.age);
-    else if(sort==='value')c=numCmp(a.p.val,b.p.val);
-    else if(sort==='wage')c=numCmp(a.p.wage,b.p.wage);
-    else if(sort==='expiry')c=numCmp(a.expiry?a.expiry.getTime():null,b.expiry?b.expiry.getTime():null);
-    else if(sort==='minutes')c=numCmp(a.p.mins,b.p.mins);
-    else if(sort==='rating')c=numCmp(a.p.s['Av Rat'],b.p.s['Av Rat']);
-    else c=numCmp(a.score,b.score);
-    return c*dir||numCmp(b.score,a.score)||numCmp(b.p.mins,a.p.mins)||textCmp(a.p.name,b.p.name);
+    if(sort==='name')c=cmp(a.p.name,b.p.name,true);
+    else if(sort==='position')c=cmp(a.p.pos,b.p.pos,true);
+    else if(sort==='age')c=cmp(a.p.age,b.p.age,false);
+    else if(sort==='value')c=cmp(a.p.val,b.p.val,false);
+    else if(sort==='wage')c=cmp(a.p.wage,b.p.wage,false);
+    else if(sort==='expiry')c=cmp(a.expiry?a.expiry.getTime():null,b.expiry?b.expiry.getTime():null,false);
+    else if(sort==='minutes')c=cmp(a.p.mins,b.p.mins,false);
+    else if(sort==='rating')c=cmp(a.p.s['Av Rat'],b.p.s['Av Rat'],false);
+    else c=cmp(a.score,b.score,false);
+    return c||tie(a,b);
   });
   return {role,asOf,limit6,limit12,out,minM};
 }
@@ -4637,11 +4637,11 @@ function renderContractMarket(youth){
   $('cm-role-'+kind).addEventListener('change',e=>{CM.role[kind]=e.target.value;cmDraw(kind,youth);});
   $('cm-pos-'+kind).addEventListener('change',e=>{CM.pos[kind]=e.target.value;cmDraw(kind,youth);});
   $('cm-mins-'+kind).addEventListener('change',e=>{CM.minM[kind]=Math.max(0,num(e.target.value)||0);cmDraw(kind,youth);});
-  $('cm-sort-'+kind).addEventListener('change',e=>{CM.sort[kind]=e.target.value;CM.dir[kind]=['age','value','wage','expiry'].includes(e.target.value)?'asc':'desc';cmDraw(kind,youth);});
+  $('cm-sort-'+kind).addEventListener('change',e=>{CM.sort[kind]=e.target.value;CM.dir[kind]=['name','position','age','value','wage','expiry'].includes(e.target.value)?'asc':'desc';cmDraw(kind,youth);});
   $('cm-search-'+kind).addEventListener('input',e=>{CM.q[kind]=e.target.value;cmDraw(kind,youth);});
   root.onclick=async e=>{
     const sortHead=e.target.closest('[data-cm-sort]');
-    if(sortHead){const key=sortHead.dataset.cmSort;if(CM.sort[kind]===key)CM.dir[kind]=CM.dir[kind]==='desc'?'asc':'desc';else{CM.sort[kind]=key;CM.dir[kind]=['age','value','wage','expiry'].includes(key)?'asc':'desc';}cmDraw(kind,youth);return;}
+    if(sortHead){const key=sortHead.dataset.cmSort;if(CM.sort[kind]===key)CM.dir[kind]=CM.dir[kind]==='desc'?'asc':'desc';else{CM.sort[kind]=key;CM.dir[kind]=['name','position','age','value','wage','expiry'].includes(key)?'asc':'desc';}cmDraw(kind,youth);return;}
     const modeBtn=e.target.closest('[data-cm-mode]');
     if(modeBtn){CM.mode[kind]=modeBtn.dataset.cmMode;renderContractMarket(youth);return;}
     const add=e.target.closest('[data-cm-add]');
