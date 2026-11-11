@@ -4548,7 +4548,7 @@ function renderTransferHistory(){
 }
 
 /* ---------------- Contract and youth markets ---------------- */
-const CM={mode:{senior:'6',youth:'6'},role:{senior:'',youth:''},clubKey:{senior:'',youth:''},pos:{senior:'all',youth:'all'},minM:{senior:0,youth:0},sort:{senior:'score',youth:'score'},q:{senior:'',youth:''}};
+const CM={mode:{senior:'6',youth:'6'},role:{senior:'',youth:''},clubKey:{senior:'',youth:''},pos:{senior:'all',youth:'all'},minM:{senior:0,youth:0},sort:{senior:'score',youth:'score'},dir:{senior:'desc',youth:'desc'},q:{senior:'',youth:''}};
 function cmClubKey(t){return norm(t.club)+'|'+norm(t.div);}
 function cmClubs(){return teamRows().filter(t=>t.club).sort((a,b)=>a.club.localeCompare(b.club)||a.div.localeCompare(b.div));}
 function cmSelectedClub(kind,clubs){
@@ -4595,13 +4595,21 @@ function cmBuild(kind){
     const score=roleScore(p,role);
     out.push({p,score,expiry,free});
   }
-  const sort=CM.sort[kind];
+  const sort=CM.sort[kind],dir=CM.dir[kind]==='asc'?1:-1;
+  const textCmp=(x,y)=>String(x??'').localeCompare(String(y??''),undefined,{numeric:true,sensitivity:'base'});
+  const numCmp=(x,y)=>{const a=Number.isFinite(x)?x:null,b=Number.isFinite(y)?y:null;return a==null?(b==null?0:1):b==null?-1:a-b;};
   out.sort((a,b)=>{
-    if(sort==='age')return (a.p.age??999)-(b.p.age??999)||((b.score??-1)-(a.score??-1));
-    if(sort==='value')return (a.p.val??Infinity)-(b.p.val??Infinity)||((b.score??-1)-(a.score??-1));
-    if(sort==='wage')return (a.p.wage??Infinity)-(b.p.wage??Infinity)||((b.score??-1)-(a.score??-1));
-    if(sort==='rating')return (b.p.s['Av Rat']??-1)-(a.p.s['Av Rat']??-1)||((b.score??-1)-(a.score??-1));
-    return (b.score??-1)-(a.score??-1)||(b.p.s['Av Rat']??-1)-(a.p.s['Av Rat']??-1)||(b.p.mins||0)-(a.p.mins||0);
+    let c=0;
+    if(sort==='name')c=textCmp(a.p.name,b.p.name);
+    else if(sort==='position')c=textCmp(a.p.pos,b.p.pos);
+    else if(sort==='age')c=numCmp(a.p.age,b.p.age);
+    else if(sort==='value')c=numCmp(a.p.val,b.p.val);
+    else if(sort==='wage')c=numCmp(a.p.wage,b.p.wage);
+    else if(sort==='expiry')c=numCmp(a.expiry?a.expiry.getTime():null,b.expiry?b.expiry.getTime():null);
+    else if(sort==='minutes')c=numCmp(a.p.mins,b.p.mins);
+    else if(sort==='rating')c=numCmp(a.p.s['Av Rat'],b.p.s['Av Rat']);
+    else c=numCmp(a.score,b.score);
+    return c*dir||numCmp(b.score,a.score)||numCmp(b.p.mins,a.p.mins)||textCmp(a.p.name,b.p.name);
   });
   return {role,asOf,limit6,limit12,out,minM};
 }
@@ -4620,7 +4628,7 @@ function renderContractMarket(youth){
     '<div class="field"><label for="cm-date-'+kind+'">Your in-game date</label><input id="cm-date-'+kind+'" type="date" value="'+esc(dateVal)+'"></div></div>'+
     '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" id="cm-setclub-'+kind+'">Set selected club as My Club</button><span class="hint">'+(club?'Scoring context: '+esc(club.club)+' · '+esc(club.div):'Choose a club to set your recruitment context')+'</span></div>'+
     '<div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn '+(mode==='6'?'primary':'')+'" type="button" data-cm-mode="6">Expiring within 6 months</button><button class="btn '+(mode==='12'?'primary':'')+'" type="button" data-cm-mode="12">Expiring within 12 months</button><button class="btn '+(mode==='free'?'primary':'')+'" type="button" data-cm-mode="free">Free agents</button>'+(youth?'<button class="btn '+(mode==='all'?'primary':'')+'" type="button" data-cm-mode="all">All players</button>':'')+'</div>'+
-    '<div class="grid g3" style="margin-top:12px;align-items:end"><div class="field"><label for="cm-mins-'+kind+'">Minimum minutes</label><input id="cm-mins-'+kind+'" type="number" min="0" step="50" value="'+minM+'"></div><div class="field"><label for="cm-sort-'+kind+'">Sort results</label><select id="cm-sort-'+kind+'"><option value="score">Role score: highest first</option><option value="rating">Average rating: highest first</option><option value="age">Age: youngest first</option><option value="value">Transfer value: lowest first</option><option value="wage">Wage: lowest first</option></select></div><div class="field"><label for="cm-search-'+kind+'">Search player or club</label><input id="cm-search-'+kind+'" type="search" value="'+esc(CM.q[kind])+'" placeholder="Search name, club or nationality"></div></div></div></div>'+
+    '<div class="grid g3" style="margin-top:12px;align-items:end"><div class="field"><label for="cm-mins-'+kind+'">Minimum minutes</label><input id="cm-mins-'+kind+'" type="number" min="0" step="50" value="'+minM+'"></div><div class="field"><label for="cm-sort-'+kind+'">Sort results</label><select id="cm-sort-'+kind+'"><option value="score">Role score</option><option value="rating">Average rating</option><option value="name">Player name</option><option value="position">Position</option><option value="age">Age</option><option value="minutes">Minutes</option><option value="value">Transfer value</option><option value="wage">Wage</option><option value="expiry">Contract expiry</option></select></div><div class="field"><label for="cm-search-'+kind+'">Search player or club</label><input id="cm-search-'+kind+'" type="search" value="'+esc(CM.q[kind])+'" placeholder="Search name, club or nationality"></div></div></div></div>'+
     '<div class="panel"><div class="phead"><div><h2>'+label+'</h2><p class="hint">'+(youth?'Under-21 players only.':'Senior market; no age cap.')+' Role scores are based on the selected role and exported performance data.</p></div><div class="h2" id="cm-count-'+kind+'">—</div></div><div id="cm-results-'+kind+'"></div><p class="hint" id="cm-note-'+kind+'" style="margin:10px 16px 16px"></p></div>';
   $('cm-pos-'+kind).value=CM.pos[kind];$('cm-sort-'+kind).value=CM.sort[kind];
   const date=$('cm-date-'+kind);
@@ -4629,9 +4637,11 @@ function renderContractMarket(youth){
   $('cm-role-'+kind).addEventListener('change',e=>{CM.role[kind]=e.target.value;cmDraw(kind,youth);});
   $('cm-pos-'+kind).addEventListener('change',e=>{CM.pos[kind]=e.target.value;cmDraw(kind,youth);});
   $('cm-mins-'+kind).addEventListener('change',e=>{CM.minM[kind]=Math.max(0,num(e.target.value)||0);cmDraw(kind,youth);});
-  $('cm-sort-'+kind).addEventListener('change',e=>{CM.sort[kind]=e.target.value;cmDraw(kind,youth);});
+  $('cm-sort-'+kind).addEventListener('change',e=>{CM.sort[kind]=e.target.value;CM.dir[kind]=['age','value','wage','expiry'].includes(e.target.value)?'asc':'desc';cmDraw(kind,youth);});
   $('cm-search-'+kind).addEventListener('input',e=>{CM.q[kind]=e.target.value;cmDraw(kind,youth);});
   root.onclick=async e=>{
+    const sortHead=e.target.closest('[data-cm-sort]');
+    if(sortHead){const key=sortHead.dataset.cmSort;if(CM.sort[kind]===key)CM.dir[kind]=CM.dir[kind]==='desc'?'asc':'desc';else{CM.sort[kind]=key;CM.dir[kind]=['age','value','wage','expiry'].includes(key)?'asc':'desc';}cmDraw(kind,youth);return;}
     const modeBtn=e.target.closest('[data-cm-mode]');
     if(modeBtn){CM.mode[kind]=modeBtn.dataset.cmMode;renderContractMarket(youth);return;}
     const add=e.target.closest('[data-cm-add]');
@@ -4646,13 +4656,15 @@ function renderContractMarket(youth){
 }
 function cmDraw(kind,youth){
   const root=$('cm-results-'+kind);if(!root)return;
+  const sortSelect=$('cm-sort-'+kind);if(sortSelect)sortSelect.value=CM.sort[kind];
   const built=cmBuild(kind),mode=CM.mode[kind],dateRequired=(mode==='6'||mode==='12')&&!built.asOf;
   $('cm-count-'+kind).textContent=dateRequired?'Set date':built.out.length.toLocaleString();
   if(dateRequired){root.innerHTML='<div class="grp"><p class="hint">Enter your current in-game date above. The 6- and 12-month buttons calculate expiry windows from that date, rather than guessing from the season label.</p></div>'; $('cm-note-'+kind).textContent='Free-agent results do not require an in-game date.';return;}
   const rows=built.out;
-  root.innerHTML=rows.length?'<div class="tablewrap"><table><thead><tr><th>#</th><th>Player</th><th>Position</th><th class="num">Age</th><th class="num">Role score</th><th class="num">Minutes</th><th>Value / wage</th><th>Contract expiry</th><th></th></tr></thead><tbody>'+rows.map((x,i)=>{
+  const sh=(key,label,numCol)=>'<th class="sortable'+(CM.sort[kind]===key?' on':'')+(numCol?' num':'')+'" data-cm-sort="'+key+'" title="Sort by '+label+'">'+label+(CM.sort[kind]===key?(CM.dir[kind]==='asc'?' ↑':' ↓'):'')+'</th>';
+  root.innerHTML=rows.length?'<div class="tablewrap"><table><thead><tr><th>#</th>'+sh('name','Player',false)+sh('position','Position',false)+sh('age','Age',true)+sh('score','Role score',true)+sh('minutes','Minutes',true)+sh('value','Transfer value',false)+sh('wage','Wage',false)+sh('expiry','Contract expiry',false)+'<th></th></tr></thead><tbody>'+rows.map((x,i)=>{
     const p=x.p,score=x.score,expiry=x.expiry?x.expiry.toLocaleDateString('en-GB'):'—',already=slHas(p.key);
-    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'<div class="pclub">'+esc(p.wageTxt||'Wage unavailable')+'</div></td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
+    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'</td><td>'+esc(p.wageTxt||'—')+'</td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
   }).join('')+'</tbody></table></div>':'<div class="grp"><p class="hint">No players match this view and its filters.</p></div>';
   const base=mode==='free'?'Players explicitly identified as Free Transfer, Free Agent or Unattached.':mode==='all'?'All under-21 players in the current import, regardless of contract status or role compatibility. Players without a valid score appear after scored players.':'Contract expiry dates from '+built.asOf.toLocaleDateString('en-GB')+' through '+(mode==='6'?built.limit6:built.limit12).toLocaleDateString('en-GB')+'.';
   const unknown=S.season.players.filter(p=>(kind!=='youth'||(p.age!=null&&p.age<21))&&!cmExpiry(p)&&!cmFreeAgent(p)).length;
