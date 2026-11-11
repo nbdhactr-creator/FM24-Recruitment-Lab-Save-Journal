@@ -5267,10 +5267,10 @@ async function renderSquadStats(){
       view={players:ps,byKey:new Map(ps.map(p=>[p.key,p]))};source='Current world import';
     }
   }catch(e){
-    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2></div><p class="hint">Couldn’t load this checkpoint: ${esc(e.message||e.code||'Unknown error')}</p><button class="btn" type="button" data-sq="add">Add another checkpoint</button></div>`;return;
+    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2></div>${modeTabs}<p class="hint">Couldn’t load this checkpoint: ${esc(e.message||e.code||'Unknown error')}</p><button class="btn" type="button" data-sq="add">Add another checkpoint</button></div>`;return;
   }
   if(!view||!view.players||!view.players.length){
-    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}</p></div><div class="grp"><p class="hint">${s.myClub?'No squad rows are available for '+esc(s.myClub)+' in this season. Add a squad checkpoint or check your club setting.':'Set your club in Save settings, then add a squad checkpoint.'}</p><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button></div></div>`;return;
+    root.innerHTML=`<div class="panel"><div class="phead"><h2>Squad Assessment</h2><p>${esc(s.name||'Selected save')}</p></div>${modeTabs}<div class="grp"><p class="hint">${s.myClub?'No squad rows are available for '+esc(s.myClub)+' in this season. Add a squad checkpoint or check your club setting.':'Set your club in Save settings, then add a squad checkpoint.'}</p><button class="btn primary" type="button" data-sq="add">Add squad checkpoint</button></div></div>`;return;
   }
   const players=view.players, tacs=tacticList(), tac=tacs.find(t=>t.id===(SQ.tacId||s.sq.assessmentTactic||''))||tacs[0], assessment=sqRoleAssessment(players,tac);
   const groups=['Goalkeepers','Defence','Defensive midfield','Midfield','Attacking midfield','Attack'];
