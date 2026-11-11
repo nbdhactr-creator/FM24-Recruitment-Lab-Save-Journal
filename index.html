@@ -1578,6 +1578,54 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 .su-slot select{min-width:0;width:100%}
 @media (max-width:760px){.su-slots{grid-template-columns:1fr}}
 @media (max-width:760px){div:has(> #pp-name){flex-wrap:wrap;row-gap:6px}#pp-name{flex:1 1 100%;overflow:visible}.su-opts{grid-template-columns:1fr}.chg{flex-wrap:wrap}.chg-l{flex-basis:100%;order:3}}
+
+/* ---------- Mobile usability and refresh control ---------- */
+.app-refresh{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:7px 11px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);color:var(--ink2);font:600 12px/1 var(--ui);cursor:pointer;white-space:nowrap}
+.app-refresh svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.app-refresh:hover{color:var(--ink);border-color:var(--silver)}
+.app-refresh:disabled{opacity:.55;cursor:wait}
+.app-refresh[aria-busy="true"] svg{animation:rl-refresh-spin .9s linear infinite}
+@keyframes rl-refresh-spin{to{transform:rotate(360deg)}}
+@media(max-width:760px){
+  .app{min-width:0}
+  .mainwrap{min-width:0;width:100%}
+  .topbar{min-width:0;height:56px;gap:6px}
+  .crumb{flex:1 1 auto}
+  .gsearch{margin-left:0;width:38px;height:38px;min-width:38px;justify-content:center;padding:0}
+  .seasonpill,.tpill{min-width:0}
+  .tpill{padding:7px 8px}
+  .tpill .ptxt{max-width:76px}
+  .app-refresh{width:38px;min-width:38px;height:38px;min-height:38px;padding:0;border-radius:9px}
+  .app-refresh .refresh-label{display:none}
+  .wrap{width:100%;padding-inline:12px}
+  .view{min-width:0}
+  .view.fitpg{padding-block:12px}
+  .fitroot{height:auto;min-height:0}
+  .rl-h{flex-wrap:wrap;white-space:normal;gap:7px}
+  .rl-h h2{white-space:normal}
+  #main .panel,#main .book,#main .fitroot{min-width:0;max-width:100%}
+  #main .field{min-width:0}
+  #main .row{flex-wrap:wrap}
+  #main .field input:not([type=checkbox]):not([type=radio]),#main .field select,#main .field textarea{min-height:44px;font-size:16px}
+  #main .btn,#main button.btn{min-height:40px}
+  #main .tablewrap,#main .rl-scroll,#main .scroll,#main .sltable,#main .sqtable,#main .phl-tbl{max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  #main .tablewrap{overflow-x:auto}
+  #main .tablewrap table{min-width:680px}
+  #main .sltable,#main .sqtable,#main .phl-tbl{overflow-x:auto}
+  .bnav button{min-height:46px;padding-top:6px;padding-bottom:6px}
+  .side .ni{min-height:42px}
+  dialog:not(.palette):not(.rptdlg){max-width:calc(100vw - 16px);max-height:calc(100dvh - 20px);overflow:auto}
+}
+@media(max-width:420px){
+  .topbar{padding-inline:max(9px,env(safe-area-inset-left,0px)) max(9px,env(safe-area-inset-right,0px))}
+  .tpill .ptxt{max-width:62px}
+  .wrap{padding-inline:10px}
+  .bnav{gap:0}
+  .bnav button{font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){
+  .app-refresh[aria-busy="true"] svg{animation:none}
+}
 </style>
 <div class="app">
 <aside class="side" id="side" aria-label="Sections">
@@ -1646,6 +1694,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
       <p id="adjhelp">Uses the Recruitment Lab tier framework, relative to your selected home league. Every eligible per-90 volume statistic is adjusted before percentiles and role scores. Unclassified competitions are excluded from adjusted per-90 rankings and flagged in League Intelligence; they are never silently assigned an equal-strength multiplier. Percentages and efficiency rates are not scaled.</p>
     </div>
   </div>
+  <button class="app-refresh" type="button" id="app-refresh" aria-label="Refresh Recruitment Lab" title="Check for updates and refresh"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.2 8A6.5 6.5 0 1 0 16.5 11M16.2 8V3.8M16.2 8H12"/></svg><span class="refresh-label">Refresh</span></button>
 </header>
 <main class="wrap" id="main">
   <div class="pvbar" id="pvbar" role="status" hidden></div>
@@ -4741,7 +4790,8 @@ adjPill();
 document.addEventListener('click', e => { const b = e.target.closest('[data-explore]'); if (!b || !S.season) return; applyRole(b.dataset.explore); setTab('explore'); });
 
 /* ---------------- Library ---------------- */
-async function persist(){ try { await Store.putSave(PV.on ? Object.assign({}, S.save, {myClub:PV.club0, myLeague:PV.league0, dof:PV.dof0}) : S.save); } catch(e){ console.error(e); toast('Could not save changes: ' + (e.code || e.message)); } }
+let APP_PERSIST_WRITES = 0;
+async function persist(){ APP_PERSIST_WRITES++; try { await Store.putSave(PV.on ? Object.assign({}, S.save, {myClub:PV.club0, myLeague:PV.league0, dof:PV.dof0}) : S.save); } catch(e){ console.error(e); toast('Could not save changes: ' + (e.code || e.message)); } finally { APP_PERSIST_WRITES = Math.max(0, APP_PERSIST_WRITES - 1); } }
 function storeBadge(){ const el = $('store'); el.className = 'store ' + (Store.kind === 'cloud' ? 'on' : Store.kind === 'local' ? 'local' : '');
   el.querySelector('span').textContent = Store.kind === 'cloud' ? 'Synced to private cloud' : Store.kind === 'local' ? 'Saved on this device' : 'Not stored';
   el.title = Store.kind === 'cloud' ? 'Your Recruitment Lab data is stored in your private Supabase account. Keep periodic backups.' : Store.kind === 'local' ? 'Everything is kept in this browser on this device. Download a backup from Settings now and then.' : 'This browser isn\u2019t letting the Lab store anything, so imports last for this session only. A private window is the usual cause.'; }
@@ -7457,7 +7507,24 @@ fillSettings = function(){ _fillSettings(); const h = (S.save && S.save.history)
 let INSTALL = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL = e; const b = $('btn-install'); if (b) b.hidden = false; });
 $('btn-install').onclick = async () => { if (!INSTALL) return; INSTALL.prompt(); try { await INSTALL.userChoice; } catch(e){} INSTALL = null; $('btn-install').hidden = true; };
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && window.top === window){ window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && window.top === window){ window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(() => {}); }); }
+let APP_REFRESHING = false;
+async function refreshRecruitmentLab(){
+  const button=$('app-refresh'); if(APP_REFRESHING)return;
+  if($('imp-go')?.disabled){toast('Let the season import finish before refreshing.');return;}
+  if(['rl-cloud-connect','rl-cloud-migrate'].some(id=>$(id)?.disabled)){toast('A cloud connection or migration is in progress. Wait for it to finish.');return;}
+  if(!confirm('Refresh Recruitment Lab and check for the latest version? Any unsaved text in an open form may be lost.'))return;
+  APP_REFRESHING=true;if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+  try{
+    await flushAll();
+    const deadline=Date.now()+8000;
+    while(APP_PERSIST_WRITES>0&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,100));
+    if(APP_PERSIST_WRITES>0||JR.dirty.size||MG.dirty){throw new Error('Some changes are still waiting to save. Try again in a moment.');}
+    if('serviceWorker' in navigator){const registrations=await navigator.serviceWorker.getRegistrations();await Promise.all(registrations.map(reg=>reg.update().catch(()=>null)));}
+    window.location.reload();
+  }catch(error){APP_REFRESHING=false;if(button){button.disabled=false;button.removeAttribute('aria-busy');}toast('Refresh paused: '+(error.message||'could not finish saving.'));}
+}
+$('app-refresh').addEventListener('click',refreshRecruitmentLab);
 
 
 /* ---------- Supabase account foundation; data remains local until migration is explicitly enabled ---------- */
