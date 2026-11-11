@@ -4471,8 +4471,7 @@ async function thBuild(){
   if(signature===TH.signature)return TH.rows;
   const token=++TH.token, snapshots=[];
   for(const entry of entries){
-    let obj=S.seasonCache.get(S.save.id+'|'+entry.label);
-    if(!obj||!obj.rows||!obj.cols)obj=await Store.getSeason(entry.ref);
+    let obj=await Store.getSeason(entry.ref);
     if(token!==TH.token)return [];
     if(!obj||!Array.isArray(obj.rows)||!Array.isArray(obj.cols))continue;
     const ix=Object.fromEntries(obj.cols.map((c,i)=>[c,i]));
