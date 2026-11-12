@@ -4827,17 +4827,17 @@ function devMetricValue(p, id){
   const rate = (key) => st[key] != null && mins > 0 ? st[key] / mins * 90 : null;
   if (id === 'G+A/90') {
     const g=st.Gls, a=st.Ast;
-    return g == null && a == null ? null : (rate('Gls') || 0) + (rate('Ast') || 0);
+    return g == null || a == null ? null : rate('Gls') + rate('Ast');
   }
   if (id === 'xG+xA/90') {
     const xg=st.xG, xa=st.xA;
-    return xg == null && xa == null ? null : (xg == null ? 0 : rate('xG') || 0) + (xa == null ? 0 : rate('xA') || 0);
+    return xg == null || xa == null ? null : rate('xG') + rate('xA');
   }
   if (id === 'Gls/90') return rate('Gls');
   if (id === 'Asts/90') return rate('Ast');
   if (id === 'Pr passes/90') return st['Pr passes/90'] != null ? st['Pr passes/90'] : rate('Pr Passes');
   if (id === 'K Ps/90') return st['K Ps/90'] != null ? st['K Ps/90'] : rate('K Pas');
-  if (id === 'TklW+Int/90') return (st['Tck W'] == null && st.Itc == null) ? null : ((st['Tck W'] || 0) + (st.Itc || 0)) / (mins || Infinity) * 90;
+  if (id === 'TklW+Int/90') return st['Tck W'] == null || st.Itc == null || !mins ? null : (st['Tck W'] + st.Itc) / mins * 90;
   if (id === 'Hdrs W/90') return st['Hdrs W/90'] != null ? st['Hdrs W/90'] : rate('Hdrs W');
   if (id === 'Poss Won/90') return st['Poss Won/90'];
   if (id === 'Mins') return p.mins;
@@ -4923,7 +4923,7 @@ async function devBuildHistory(sourcePlayer){
 function devDelta(a,b,digits){
   if(a==null||b==null)return '<span class="rl-sub">Not comparable</span>';
   const d=a-b, sign=d>0?'+':'';
-  return '<span class="'+(d>0?'dev-up':d<0?'dev-down':'dev-flat')+'">'+sign+devFmt(d,digits||2)+'</span>';
+  return '<span class="'+(d>0?'dev-up':d<0?'dev-down':'dev-flat')+'">'+sign+devFmt(d,digits==null?2:digits)+'</span>';
 }
 function devSummary(rows){
   const qualified=rows.filter(r=>(r.player.mins||0)>=900 && r.player.s['Av Rat']!=null);
@@ -4935,7 +4935,7 @@ function devSummary(rows){
       const peak=qualified[i], others=qualified.filter((r,j)=>j!==i).map(r=>r.player.s['Av Rat']).sort((a,b)=>a-b);
       const med=others[Math.floor(others.length/2)];
       const later=qualified.slice(i+1);
-      const samePos=later.every(r=>norm(r.player.pos)===norm(peak.player.pos));
+      const samePos=later.every(r=>norm(r.player.pos)===norm(peak.player.pos) && norm(r.player.div)===norm(peak.player.div));
       if(samePos && peak.player.s['Av Rat']>=med+0.25 && later.some(r=>r.player.s['Av Rat']<=peak.player.s['Av Rat']-0.2)){
         return 'Possible one-season spike: one season stands clearly above the other sampled seasons, followed by a rating drop. This is a flag for investigation, not proof the player was a one-season wonder.';
       }
