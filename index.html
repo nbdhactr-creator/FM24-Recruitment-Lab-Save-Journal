@@ -1987,7 +1987,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
 
   <!-- TACTIC -->
   <section class="view" id="v-tactic" hidden>
-    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Best XIs are chosen to maximise total role score, with each player used once. Gold rings mark your players.</p></div></div>
+    <div class="pagehead"><div><h1>Tactic &amp; best XI</h1><p>Best XIs maximise combined fit: 56.25% tactical role score and 43.75% philosophy score. Each player is used once. Gold rings mark your players.</p></div></div>
     <div class="panel">
       <div class="grp">
         <div class="grid g5">
@@ -3336,6 +3336,15 @@ function roleScore(p, role){
   const sc = roleFamilyScore(role, key => statPct(p, key, role.strata));
   m.set(p.i, sc); return sc;
 }
+function tacticRoleScore(p, role){
+  const tactical = roleScore(p, role);
+  if (tactical == null) return null;
+  const philosophy = philo(p, role);
+  // Match the existing Foundation model's tactical-to-philosophy ratio (45:35),
+  // normalised to the two dimensions used by the Tactic & Best XI page.
+  if (philosophy == null) return tactical;
+  return Math.round((tactical * 45 + philosophy * 35) / 80);
+}
 function topStats(role, n){ return Object.entries(roleEffectiveWeights(role)).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
 
 /* ---------------- State ---------------- */
@@ -4359,7 +4368,7 @@ function bestXI(players, tac, minM){
   if (!cands.length) return codes.map(c => ({code:c, role:roleById[tac.roles[c]], p:null, sc:null}));
   const BIG = 1e6, cols = Math.max(cands.length, codes.length);
   const scores = codes.map(c => { const role = roleById[tac.roles[c]]; const need = SLOT[c].need;
-    return cands.map(p => need.some(x => p.slots.has(x)) ? roleScore(p, role) : null); });
+    return cands.map(p => need.some(x => p.slots.has(x)) ? tacticRoleScore(p, role) : null); });
   const cost = codes.map((c,i) => { const row = new Array(cols).fill(BIG); scores[i].forEach((sc,j) => { if (sc != null) row[j] = 100 - sc; }); return row; });
   const asg = hungarian(cost);
   return codes.map((c,i) => { const j = asg[i]; const ok = j >= 0 && j < cands.length && cost[i][j] < BIG; return {code:c, role:roleById[tac.roles[c]], p: ok ? cands[j] : null, sc: ok ? scores[i][j] : null}; });
@@ -4417,7 +4426,7 @@ function renderTactic(){
   const byClub = {}; S.season.players.forEach(p => { (byClub[p.club] = byClub[p.club] || []).push(p); });
   const clubXIs = clubs.map(c => bestXI(byClub[c] || [], S.tac, minM));
   const mine = S.save.myClub ? bestXIP(S.season.players.filter(p => p.club === S.save.myClub), S.tac, minM, xiPins(S.tac)) : null;
-  $('benchnote').textContent = `Benchmark: each of the ${clubs.length} clubs in ${bname} gets its own best XI in this tactic, and the figures are the median of the player each club fields in that slot.${mine ? ' Your column is ' + S.save.myClub + "'s best XI." : ' Set your club in Save settings to compare your squad.'}`;
+  $('benchnote').textContent = `Benchmark: each of the ${clubs.length} clubs in ${bname} gets its own best XI using the combined tactical-role and philosophy score, and the figures are the median combined score of the player each club fields in that slot.${mine ? ' Your column is ' + S.save.myClub + "'s best XI." : ' Set your club in Save settings to compare your squad.'}`;
   $('bhead').innerHTML = `<tr><th>Slot</th><th>Role</th>${mine?'<th>Your player</th>':''}<th class="num">${mine?'Your score':''}</th><th class="num">Benchmark score</th>${mine?'<th class="num">Gap</th>':''}<th>Key stats${mine?' (yours / benchmark)':' (benchmark)'}</th></tr>`;
   $('bbody').innerHTML = FORMATIONS[S.tac.formation].map((c,i) => {
     const role = roleById[S.tac.roles[c]], ks = topStats(role, 3);
@@ -7639,14 +7648,14 @@ document.addEventListener('change', e => { if (PV.on && e.target && (e.target.id
    Placements are kept per tactic in save.xiPins[tacticId] = {slotCode: playerKey}.
    Placed players stay where you put them; the Lab fills the other slots with the best fit. */
 function xiPins(tac){ const t = tac || (S.save ? curTac() : null), all = S.save && S.save.xiPins, m = all && t && t.id ? all[t.id] : null; return m && typeof m === 'object' ? m : {}; }
-function xiScore(p, role){ return (role.strata === 'GK') !== p.slots.has('GK') ? null : roleScore(p, role); }
+function xiScore(p, role){ return (role.strata === 'GK') !== p.slots.has('GK') ? null : tacticRoleScore(p, role); }
 function bestXIP(players, tac, minM, pins){
   const codes = FORMATIONS[tac.formation] || [], byKey = new Map(players.map(p => [p.key, p])), fixed = {}, used = new Set();
   codes.forEach(c => { const k = pins && pins[c], p = k && byKey.get(k); if (p && !used.has(k)){ fixed[c] = p; used.add(k); } });
   if (!used.size) return bestXI(players, tac, minM);
   const rest = codes.filter(c => !fixed[c]), cands = players.filter(p => p.mins >= minM && !used.has(p.key)), res = {};
   if (rest.length && cands.length){ const BIG = 1e6, cols = Math.max(cands.length, rest.length);
-    const scores = rest.map(c => { const role = roleById[tac.roles[c]], need = SLOT[c].need; return cands.map(p => need.some(x => p.slots.has(x)) ? roleScore(p, role) : null); });
+    const scores = rest.map(c => { const role = roleById[tac.roles[c]], need = SLOT[c].need; return cands.map(p => need.some(x => p.slots.has(x)) ? tacticRoleScore(p, role) : null); });
     const cost = rest.map((c, i) => { const row = new Array(cols).fill(BIG); scores[i].forEach((sc, j) => { if (sc != null) row[j] = 100 - sc; }); return row; });
     const asg = hungarian(cost); rest.forEach((c, i) => { const j = asg[i]; if (j >= 0 && j < cands.length && cost[i][j] < BIG) res[c] = {p:cands[j], sc:scores[i][j]}; }); }
   return codes.map(c => { const role = roleById[tac.roles[c]]; if (fixed[c]) return {code:c, role, p:fixed[c], sc:xiScore(fixed[c], role), pinned:true};
