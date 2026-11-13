@@ -6640,7 +6640,7 @@ const PH_ISOLATION_EVIDENCE_FAMILIES = {
   ],
   win:[['Pres A/90','Press success'],['Poss Won/90']],
   front:[['Int/90'],['Tck W/90','Tck R']],
-  int:[['Dist/90 km','Sprints/90','Sprints/km']]
+  int:[['Dist/90 km'],['Sprints/90','Sprints/km']]
 };
 const PH_EVIDENCE_FAMILIES = {
   keep:[['Pas %','Loss rate']], avail:[['Ps A/90']],
@@ -7781,7 +7781,7 @@ function applyPhTemplate(k){ const t = PH_TEMPLATES[k]; if (!t || !S.save) retur
   c.tacticalWeight = Number.isFinite(Number(c.tacticalWeight)) ? Number(c.tacticalWeight) : 70;
   c.w = {}; const done = new Set();
   ROLES.forEach(r => { const key = phKey(r); if (done.has(key)) return; done.add(key); c.w[key] = t.f(PH_DEF_W[r.type] || [2,2,2,2,1,2], r); });
-  c.template = k; c.custom = !!(c.pos || c.extra || c.charOut !== undefined || (Number(c.tacticalWeight) !== 70) || (c.stats && k !== 'isolation')); phChanged(); }
+  c.template = k; const hasCustomPos = c.pos && Object.values(c.pos).some(v => Array.isArray(v) && v.length); const hasCustomExtra = Array.isArray(c.extra) && c.extra.length; c.custom = !!(hasCustomPos || hasCustomExtra || c.charOut !== undefined || Number(c.tacticalWeight) !== 70 || (c.stats && Object.keys(c.stats).length && k !== 'isolation')); phChanged(); }
 
 /* ---------- first-run setup ---------- */
 const SU = {tac:'433p', ph:'possession'};
