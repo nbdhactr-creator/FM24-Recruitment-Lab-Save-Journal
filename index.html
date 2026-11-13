@@ -6629,6 +6629,24 @@ const PH_ISOLATION_EVIDENCE_FAMILIES = {
   front:[['Int/90'],['Tck W/90','Tck R']],
   int:[['Dist/90 km','Sprints/90','Sprints/km']]
 };
+// Role-specific attacking evidence. Wide creators are assessed on delivery; central attackers on
+// threat and chance creation; midfield suppliers on progression; the stable core on safe progression.
+// The position-group percentile comparison remains the same as the rest of the philosophy model.
+const PH_ISOLATION_ROLE_HURT = {
+  wideDelivery:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','OP-Crs C/90','OP-Cr %'],
+  centralThreat:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','npxG/90'],
+  midfieldSupply:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90'],
+  defensiveCore:['Drb/90','Pr passes/90','Verticality'],
+  goalkeeperSupply:['Pas %','Ps A/90','Pr passes/90']
+};
+const PH_ISOLATION_ROLE_GROUP = {
+  gk:'goalkeeperSupply',sk:'goalkeeperSupply',
+  fb:'wideDelivery',wb:'wideDelivery',cwb:'wideDelivery',wm:'wideDelivery',winger:'wideDelivery',wp:'wideDelivery',dw:'wideDelivery',
+  iw:'centralThreat',if:'centralThreat',raum:'centralThreat',wtf:'centralThreat',am:'centralThreat',eng:'centralThreat',treq:'centralThreat',ss:'centralThreat',
+  af:'centralThreat',cf:'centralThreat',poacher:'centralThreat',pf:'centralThreat',tf:'centralThreat',f9:'centralThreat',dlf:'centralThreat',
+  ap:'midfieldSupply',rpm:'midfieldSupply',regista:'midfieldSupply',dlp:'midfieldSupply',cm:'midfieldSupply',mez:'midfieldSupply',carr:'midfieldSupply',sv:'midfieldSupply',iwb:'midfieldSupply',libero:'midfieldSupply',b2b:'midfieldSupply',
+  dm:'defensiveCore',bwm:'defensiveCore',hb:'defensiveCore',anchor:'defensiveCore',cd:'defensiveCore',bpd:'defensiveCore',nncb:'defensiveCore',ifb:'defensiveCore',wcb:'defensiveCore',nnfb:'defensiveCore'
+};
 // Starting weights by role type: keep, available, hurt, win back, front foot, intensity
 const PH_DEF_W = {gk:[1,0,0,0,1,0], sk:[3,2,1,0,3,0],
   cd:[2,1,1,1,3,1], bpd:[3,2,2,1,3,1], nncb:[1,0,0,1,3,1], wcb:[3,2,2,1,2,2], libero:[3,3,3,1,2,1],
@@ -6675,8 +6693,21 @@ function phChanged(){ PHC.clear(); mgrSoon(); }
 
 /* ---------- scores ---------- */
 const PHC = new Map();
-function principleScore(p, i, st){
-  const keys = phStats(i);
+function phRoleStats(i, role){
+  const id = PRINCIPLES[i].id, c = phCfg();
+  if (c.template === 'isolation' && id === 'hurt' && role){
+    const configured = c.stats && c.stats[id];
+    // The built-in defaults are replaced by role-family indicators; a manager's custom list is respected.
+    const isDefault = !Array.isArray(configured) ||
+      JSON.stringify(configured) === JSON.stringify(PH_ISOLATION_STATS[id]) ||
+      JSON.stringify(configured) === JSON.stringify(PH_ISOLATION_LEGACY_STATS[id]);
+    const group = PH_ISOLATION_ROLE_GROUP[role.type];
+    if (isDefault && group && PH_ISOLATION_ROLE_HURT[group]) return PH_ISOLATION_ROLE_HURT[group];
+  }
+  return phStats(i);
+}
+function principleScore(p, i, st, role){
+  const keys = phRoleStats(i, role);
   if (phCfg().template !== 'isolation'){
     let a = 0, n = 0;
     keys.forEach(k => { const q = statPct(p, k, st); if (q != null){ a += q; n++; } });
@@ -6695,11 +6726,13 @@ function principleScore(p, i, st){
     const values = group.map(k => statPct(p, k, st)).filter(v => v != null);
     if (values.length) scores.push(values.reduce((a,b) => a+b, 0) / values.length);
   });
+  // Require evidence from at least half of the configured families for this principle.
+  if (!buckets.size || scores.length / buckets.size < 0.5) return null;
   return scores.length ? scores.reduce((a,b) => a+b, 0) / scores.length : null;
 }
 function philoOf(p, role){ if (!p || !role || !S.season) return null;
   const ck = role.id + '|' + p.i + '|' + adjSig() + (NODEF ? '|nd' : ''); if (PHC.has(ck)) return PHC.get(ck);
-  const w = phW(role), parts = PRINCIPLES.map((_, i) => principleScore(p, i, role.strata));
+  const w = phW(role), parts = PRINCIPLES.map((_, i) => principleScore(p, i, role.strata, role));
   let tw = 0, sw = 0, acc = 0; parts.forEach((v, i) => { tw += w[i]; if (w[i] && v != null){ acc += v * w[i]; sw += w[i]; } });
   const out = {v: tw && sw / tw >= 0.6 ? Math.round(acc / sw) : null, parts: parts.map(v => v == null ? null : Math.round(v)), w};
   PHC.set(ck, out); return out; }
@@ -6773,7 +6806,7 @@ async function renderPhilo(){
         <div class="phl-two">
           <section class="panel" aria-labelledby="phl-s-h"><div class="rl-h"><h2 id="phl-s-h">How it’s scored</h2></div>
             <div style="padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--silver)">
-              <p style="margin:0">A principle’s score is the average percentile of its evidence groups against players in the role’s position group. The philosophy score weights the six principles by the role’s dots. If less than 60% of the weight can be measured, there’s no score.</p><p style="margin:0;color:var(--muted);font-size:11.5px">Isolation avoids double-counting related signals: open-play key passes, xA and clear-cut chances share one creation group; pressing volume and success share one group. Pass attempts per 90 are only a ball-involvement proxy for availability. FM24 season exports do not provide a dependable dribble-success rate or measure off-ball space creation, so those still need scouting.</p>
+              <p style="margin:0">A principle’s score is the average percentile of its evidence groups against players in the role’s position group. The philosophy score weights the six principles by the role’s dots. If less than 60% of the weight can be measured, there’s no score.</p><p style="margin:0;color:var(--muted);font-size:11.5px">Isolation avoids double-counting related signals and now selects the attacking indicators by role family: wide roles include open-play delivery, central attackers include non-penalty threat, creators emphasise progression and chance creation, and the stable core is judged on progression. Pass attempts per 90 are only a ball-involvement proxy for availability. FM24 season exports do not provide a dependable dribble-success rate or measure off-ball space creation, so those still need scouting.</p>
               <div class="phl-band"><span class="phc fit">✓ Fits the idea</span>70 and above</div><div class="phl-band"><span class="phc coach">Coachable</span>50 to 69</div><div class="phl-band"><span class="phc against">${warn_icon()}Against the idea</span>under 50</div>
               <p style="margin:0;color:var(--muted);font-size:11.5px">Shown beside the role score on the player page, DoF picks and the scouting report.</p></div></section>
           <section class="panel" aria-labelledby="phl-c-h"><div class="rl-h"><h2 id="phl-c-h">Character test</h2><span>From Personality in the export</span></div>
