@@ -4705,8 +4705,8 @@ function cmBuild(kind){
       if(mode==='12'&&(expiry<=limit6||expiry>limit12))continue;
     }
     if(q&&!norm([p.name,p.club,p.div,p.pos,p.nat].join(' ')).includes(q))continue;
-    const score=tacticRoleScore(p,role);
-    out.push({p,score,expiry,free});
+    const score=tacticRoleScore(p,role),roleFit=roleScore(p,role),ph=philo(p,role);
+    out.push({p,score,roleFit,ph,expiry,free});
   }
   const sort=CM.sort[kind],dir=CM.dir[kind]==='asc'?1:-1;
   const cmp=(x,y,isText)=>{const ax=x==null||x==='',by=y==null||y==='';if(ax||by)return ax?(by?0:1):-1;const c=isText?String(x).localeCompare(String(y),undefined,{numeric:true,sensitivity:'base'}):Number(x)-Number(y);return c*dir;};
@@ -4771,9 +4771,9 @@ function cmDraw(kind,youth){
   if(dateRequired){root.innerHTML='<div class="grp"><p class="hint">Enter your current in-game date above. The 6- and 12-month buttons calculate expiry windows from that date, rather than guessing from the season label.</p></div>'; $('cm-note-'+kind).textContent='Free-agent results do not require an in-game date.';return;}
   const rows=built.out;
   const sh=(key,label,numCol)=>'<th class="sortable'+(numCol?' num':'')+(CM.sort[kind]===key?' on':'')+'" data-cm-sort="'+key+'" data-sort-dir="'+(CM.sort[kind]===key?CM.dir[kind]:'')+'" tabindex="0" role="button" aria-label="Sort by '+label+', '+(CM.sort[kind]===key?(CM.dir[kind]==='asc'?'ascending':'descending'):'not sorted')+'">'+label+'</th>';
-  root.innerHTML=rows.length?'<div class="tablewrap"><table><thead><tr><th>#</th>'+sh('name','Player',false)+sh('position','Position',false)+sh('age','Age',true)+sh('score','Combined fit',true)+sh('minutes','Minutes',true)+sh('value','Transfer value',false)+sh('wage','Wage',false)+sh('expiry','Contract expiry',false)+'<th></th></tr></thead><tbody>'+rows.map((x,i)=>{
+  root.innerHTML=rows.length?'<div class="tablewrap"><table><thead><tr><th>#</th>'+sh('name','Player',false)+sh('position','Position',false)+sh('age','Age',true)+sh('score','Tactic fit',true)+'<th class="num">Role fit</th><th class="num">Philosophy</th>'+sh('minutes','Minutes',true)+sh('value','Transfer value',false)+sh('wage','Wage',false)+sh('expiry','Contract expiry',false)+'<th></th></tr></thead><tbody>'+rows.map((x,i)=>{
     const p=x.p,score=x.score,expiry=x.expiry?x.expiry.toLocaleDateString('en-GB'):'—',already=slHas(p.key);
-    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'</td><td>'+esc(p.wageTxt||'—')+'</td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
+    return '<tr><td class="num">'+(i+1)+'</td><td><b>'+esc(p.name)+'</b><div class="pclub">'+esc(p.club)+' · '+esc(p.div)+'</div></td><td>'+esc(p.pos||'—')+'</td><td class="num">'+(p.age??'—')+'</td><td class="num">'+(score==null?'<span class="pclub">Insufficient data</span>':'<b>'+score+'</b>')+'</td><td class="num">'+(x.roleFit==null?'—':x.roleFit)+'</td><td class="num">'+(x.ph==null?'—':x.ph)+'</td><td class="num">'+Math.round(p.mins||0).toLocaleString()+'</td><td>'+esc(p.tv||'—')+'</td><td>'+esc(p.wageTxt||'—')+'</td><td>'+expiry+'</td><td><button class="btn sm '+(already?'ghost':'')+'" type="button" data-cm-add="'+esc(p.key)+'"'+(already?' disabled':'')+'>'+(already?'Shortlisted':'Shortlist')+'</button></td></tr>';
   }).join('')+'</tbody></table></div>':'<div class="grp"><p class="hint">No players match this view and its filters.</p></div>';
   root.querySelectorAll('[data-cm-sort]').forEach(head=>{head.addEventListener('click',()=>{const key=head.dataset.cmSort;if(CM.sort[kind]===key)CM.dir[kind]=CM.dir[kind]==='asc'?'desc':'asc';else{CM.sort[kind]=key;CM.dir[kind]=key==='score'?'desc':'asc';}cmDraw(kind,youth);});head.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();head.click();}});});
   const base=mode==='free'?'Players explicitly identified as Free Transfer, Free Agent or Unattached.':mode==='all'?'All under-21 players in the current import, regardless of contract status or role compatibility. Players without a valid score appear after scored players.':mode==='6'?'Contract expiry dates after '+built.asOf.toLocaleDateString('en-GB')+' and on or before '+built.limit6.toLocaleDateString('en-GB')+'.': 'Contract expiry dates after '+built.limit6.toLocaleDateString('en-GB')+' and on or before '+built.limit12.toLocaleDateString('en-GB')+'.';
@@ -7535,7 +7535,7 @@ function renderRecruitmentPlan(){const root=$('recruitment-root');if(!root||S.ta
 const CF = {tac:'', scope:'all', stars:'', maxGaps:5, gapAt:65, maxAge:'', sort:'found', exMine:true, exLeague:false, thin:false, sel:null, cache:new Map(), bound:false, busy:null};
 try { const o = JSON.parse(localStorage.getItem('rlabp-cf') || '{}'); ['tac','scope','stars','maxGaps','gapAt','maxAge','sort','exMine','exLeague','thin'].forEach(k => { if (k in o) CF[k] = o[k]; }); } catch(e){}
 function cfSave(){ try { const o = {}; ['tac','scope','stars','maxGaps','gapAt','maxAge','sort','exMine','exLeague','thin'].forEach(k => o[k] = CF[k]); localStorage.setItem('rlabp-cf', JSON.stringify(o)); } catch(e){} }
-const CF_W = {fit:0.45, ph:0.35, dep:0.20};   // tactical fit leads, then philosophy, then depth
+const CF_W = {fit:0.45, ph:0.35, dep:0.20};   // role fit, philosophy, then depth
 const avg = a => a.length ? a.reduce((t, v) => t + v, 0) / a.length : null;
 function cfTactics(){ const ts = tacticList(); if (CF.tac === 'best' && ts.length > 1) return ts; return [ts.find(t => t.id === CF.tac) || curTac()]; }
 function cfKey(ts){ return [S.season.label, ts.map(t => t.formation + JSON.stringify(t.roles)).join(';'), adjSig(), shrinkOn(), NODEF, JSON.stringify(phCfg())].join('|'); }
@@ -7599,7 +7599,7 @@ async function renderClubs(){ const root = $('clubs-root'); if (!root || !S.seas
       <div class="field"><label class="rl-lab" for="cf-gaps">Most gaps</label><input id="cf-gaps" type="number" min="0" max="11" inputmode="numeric" value="${esc(CF.maxGaps)}" style="width:72px"></div>
       <div class="field"><label class="rl-lab" for="cf-gapat">A gap is a slot under</label><input id="cf-gapat" type="number" min="30" max="95" step="5" inputmode="numeric" value="${esc(CF.gapAt)}" style="width:80px"></div>
       <div class="field"><label class="rl-lab" for="cf-age">XI average age up to</label><input id="cf-age" type="number" min="18" max="35" inputmode="decimal" placeholder="Any" value="${esc(CF.maxAge)}" style="width:80px"></div>
-      <div class="field"><label class="rl-lab" for="cf-sort">Sort by</label><select id="cf-sort" class="rl-sel" style="width:auto">${[['found','Foundation'],['fit','Tactical fit'],['ph','Philosophy'],['gaps','Fewest gaps'],['young','Youngest XI'],['val','Squad value']].map(([v, l]) => `<option value="${v}"${CF.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label class="rl-lab" for="cf-sort">Sort by</label><select id="cf-sort" class="rl-sel" style="width:auto">${[['found','Foundation'],['fit','Role fit'],['ph','Philosophy'],['gaps','Fewest gaps'],['young','Youngest XI'],['val','Squad value']].map(([v, l]) => `<option value="${v}"${CF.sort === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="checks"><label class="check"><input type="checkbox" id="cf-exmine"${CF.exMine ? ' checked' : ''}><span>Leave out my club</span></label><label class="check"><input type="checkbox" id="cf-exlg"${CF.exLeague ? ' checked' : ''}><span>Leave out my league</span></label><label class="check"><input type="checkbox" id="cf-thin"${CF.thin ? ' checked' : ''}><span>Include clubs with thin data</span></label></div>
     </section>
     <div class="cf-grid">
