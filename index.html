@@ -6632,10 +6632,11 @@ const PH_ISOLATION_STATS = {
 const PH_ISOLATION_EVIDENCE_FAMILIES = {
   keep:[['Pas %','Loss rate']],
   hurt:[
+    ['Ps A/90','Ps C/90'],
     ['Drb/90'],
     ['Pr passes/90','Verticality'],
     ['OP-KP/90','xA/90','CCC/90'],
-    ['npxG/90'],
+    ['npxG/90','Non-pen G/90','ShT/90','npxG/Shot'],
     ['OP-Crs C/90','OP-Cr %']
   ],
   win:[['Pres A/90','Press success'],['Poss Won/90']],
@@ -6655,16 +6656,19 @@ const PH_EVIDENCE_FAMILIES = {
 const PH_ISOLATION_ROLE_HURT = {
   wideDelivery:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','OP-Crs C/90','OP-Cr %'],
   centralThreat:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','npxG/90'],
+  raumThreat:['npxG/90','Non-pen G/90','ShT/90','npxG/Shot','OP-KP/90','xA/90','CCC/90'],
+  falseNineLink:['Ps A/90','Ps C/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','npxG/90','Drb/90'],
   midfieldSupply:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90'],
   defensiveCore:['Drb/90','Pr passes/90','Verticality'],
   goalkeeperSupply:['Pas %','Ps A/90','Pr passes/90']
 };
 const PH_ISOLATION_ROLE_GROUP = {
   gk:'goalkeeperSupply',sk:'goalkeeperSupply',
-  fb:'wideDelivery',wb:'wideDelivery',cwb:'wideDelivery',wm:'wideDelivery',winger:'wideDelivery',wp:'wideDelivery',dw:'wideDelivery',
-  iw:'centralThreat',if:'centralThreat',raum:'centralThreat',wtf:'centralThreat',am:'centralThreat',eng:'centralThreat',treq:'centralThreat',ss:'centralThreat',
-  af:'centralThreat',cf:'centralThreat',poacher:'centralThreat',pf:'centralThreat',tf:'centralThreat',f9:'centralThreat',dlf:'centralThreat',
-  ap:'midfieldSupply',rpm:'midfieldSupply',regista:'midfieldSupply',dlp:'midfieldSupply',cm:'midfieldSupply',mez:'midfieldSupply',carr:'midfieldSupply',sv:'midfieldSupply',iwb:'midfieldSupply',libero:'midfieldSupply',b2b:'midfieldSupply',
+  fb:'wideDelivery',wb:'wideDelivery',cwb:'wideDelivery',wm:'wideDelivery',winger:'wideDelivery',dw:'wideDelivery',
+  iw:'centralThreat',if:'centralThreat',wtf:'centralThreat',am:'centralThreat',treq:'centralThreat',ss:'centralThreat',
+  af:'centralThreat',cf:'centralThreat',poacher:'centralThreat',pf:'centralThreat',tf:'centralThreat',
+  raum:'raumThreat',f9:'falseNineLink',dlf:'falseNineLink',
+  wp:'midfieldSupply',eng:'midfieldSupply',ap:'midfieldSupply',rpm:'midfieldSupply',regista:'midfieldSupply',dlp:'midfieldSupply',cm:'midfieldSupply',mez:'midfieldSupply',carr:'midfieldSupply',sv:'midfieldSupply',iwb:'midfieldSupply',libero:'midfieldSupply',b2b:'midfieldSupply',
   dm:'defensiveCore',bwm:'defensiveCore',hb:'defensiveCore',anchor:'defensiveCore',cd:'defensiveCore',bpd:'defensiveCore',nncb:'defensiveCore',ifb:'defensiveCore',wcb:'defensiveCore',nnfb:'defensiveCore'
 };
 // Starting weights by role type: keep, available, hurt, win back, front foot, intensity
