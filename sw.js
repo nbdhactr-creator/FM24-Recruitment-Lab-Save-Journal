@@ -1,6 +1,6 @@
 /* Recruitment Lab service worker: lets the Lab and the Career Journal open without a connection.
    Your data never passes through here; it lives in the browser's own storage. */
-const CACHE = 'recruitment-lab-v3';
+const CACHE = 'recruitment-lab-v4';
 const CORE = ['./', 'index.html', 'manifest.json', 'journal.html', 'journal.json', 'icons/journal-192.png', 'icons/journal-512.png', 'icons/journal-maskable-512.png', 'icons/journal-apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
