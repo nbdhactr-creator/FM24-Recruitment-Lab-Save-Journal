@@ -123,9 +123,9 @@ After the first import the Lab asks three things.
      4-4-2 direct, 4-2-3-1 gegenpress, 4-1-4-1 control, 3-4-3 wing-backs,
      4-1-2-1-2 narrow diamond, 5-3-2 counter and 3-4-2-1. You can change it all
      later in section 12.
-  3. How you want to play. One of nine play styles: Possession, Counter-press,
+  3. How you want to play. One of ten play styles: Possession, Counter-press,
      Direct, Balanced, Low block and counter, Wing play, Positional play,
-     High-intensity press and Physical. This sets the philosophy weights for
+     High-intensity press, Physical and Isolation & Individual Superiority. This sets the philosophy weights for
      every role (section 12).
 
 Click Save and open Home. If you choose Later, Home shows a Run the setup
