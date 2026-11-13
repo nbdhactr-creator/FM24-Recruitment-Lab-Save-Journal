@@ -6654,7 +6654,22 @@ function phEdit(){ const d = MG.doc; if (!d) throw new Error('profile not loaded
 function phKey(r){ return r.type + '|' + r.duty; }
 function phW(r){ const c = phCfg(); const w = c.w && c.w[phKey(r)]; return Array.isArray(w) && w.length === 6 ? w : (PH_DEF_W[r.type] || [2,2,2,2,1,2]); }
 function phPos(r){ const c = phCfg(); const v = c.pos && c.pos[r.id]; return Array.isArray(v) ? v.filter(x => STRATA[x] && x !== r.strata) : phDefPos(r); }
-function phStats(i){ const c = phCfg(), id = PRINCIPLES[i].id; const v = c.stats && c.stats[id]; return Array.isArray(v) && v.length ? v : (c.template === 'isolation' ? PH_ISOLATION_STATS[id] : null) || PRINCIPLES[i].stats; }
+const PH_ISOLATION_LEGACY_STATS = {
+  keep:['Pas %','Loss rate'],
+  avail:['Ps A/90'],
+  hurt:['Drb/90','Pr passes/90','xA/90','npxG/90','OP-Crs C/90'],
+  win:['Pres A/90','Pres C/90','Poss Won/90'],
+  front:['Int/90','Tck W/90','Tck R'],
+  int:['Dist/90 km','Sprints/90']
+};
+function phStats(i){
+  const c = phCfg(), id = PRINCIPLES[i].id, v = c.stats && c.stats[id];
+  if (c.template === 'isolation'){
+    // Upgrade untouched legacy defaults automatically; preserve any manager-customised stat list.
+    if (!Array.isArray(v) || JSON.stringify(v) === JSON.stringify(PH_ISOLATION_LEGACY_STATS[id])) return PH_ISOLATION_STATS[id];
+  }
+  return Array.isArray(v) && v.length ? v : (c.template === 'isolation' ? PH_ISOLATION_STATS[id] : null) || PRINCIPLES[i].stats;
+}
 function phCharOut(){ return phCfg().charOut !== false; }
 function phChanged(){ PHC.clear(); mgrSoon(); }
 
