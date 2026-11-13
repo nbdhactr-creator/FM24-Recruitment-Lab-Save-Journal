@@ -6609,10 +6609,25 @@ const PRINCIPLES = [
 const PH_ISOLATION_STATS = {
   keep:['Pas %','Loss rate'],
   avail:['Ps A/90'],
-  hurt:['Drb/90','Pr passes/90','xA/90','npxG/90','OP-Crs C/90'],
-  win:['Pres A/90','Pres C/90','Poss Won/90'],
+  hurt:['Drb/90','Pr passes/90','Verticality','OP-KP/90','xA/90','CCC/90','npxG/90','OP-Crs C/90','OP-Cr %'],
+  win:['Pres A/90','Press success','Poss Won/90'],
   front:['Int/90','Tck W/90','Tck R'],
-  int:['Dist/90 km','Sprints/90']
+  int:['Dist/90 km','Sprints/90','Sprints/km']
+};
+// Related measures are grouped before averaging so one event family cannot dominate
+// simply because the export contains several versions of the same signal.
+const PH_ISOLATION_EVIDENCE_FAMILIES = {
+  keep:[['Pas %','Loss rate']],
+  hurt:[
+    ['Drb/90'],
+    ['Pr passes/90','Verticality'],
+    ['OP-KP/90','xA/90','CCC/90'],
+    ['npxG/90'],
+    ['OP-Crs C/90','OP-Cr %']
+  ],
+  win:[['Pres A/90','Press success'],['Poss Won/90']],
+  front:[['Int/90'],['Tck W/90','Tck R']],
+  int:[['Dist/90 km','Sprints/90','Sprints/km']]
 };
 // Starting weights by role type: keep, available, hurt, win back, front foot, intensity
 const PH_DEF_W = {gk:[1,0,0,0,1,0], sk:[3,2,1,0,3,0],
@@ -6645,7 +6660,28 @@ function phChanged(){ PHC.clear(); mgrSoon(); }
 
 /* ---------- scores ---------- */
 const PHC = new Map();
-function principleScore(p, i, st){ let a = 0, n = 0; phStats(i).forEach(k => { const q = statPct(p, k, st); if (q != null){ a += q; n++; } }); return n ? a / n : null; }
+function principleScore(p, i, st){
+  const keys = phStats(i);
+  if (phCfg().template !== 'isolation'){
+    let a = 0, n = 0;
+    keys.forEach(k => { const q = statPct(p, k, st); if (q != null){ a += q; n++; } });
+    return n ? a / n : null;
+  }
+  const configuredFamilies = PH_ISOLATION_EVIDENCE_FAMILIES[PRINCIPLES[i].id] || [];
+  const buckets = new Map();
+  keys.forEach(k => {
+    const family = configuredFamilies.find(group => group.includes(k));
+    const id = family ? family[0] : k;
+    if (!buckets.has(id)) buckets.set(id, []);
+    buckets.get(id).push(k);
+  });
+  const scores = [];
+  buckets.forEach(group => {
+    const values = group.map(k => statPct(p, k, st)).filter(v => v != null);
+    if (values.length) scores.push(values.reduce((a,b) => a+b, 0) / values.length);
+  });
+  return scores.length ? scores.reduce((a,b) => a+b, 0) / scores.length : null;
+}
 function philoOf(p, role){ if (!p || !role || !S.season) return null;
   const ck = role.id + '|' + p.i + '|' + adjSig() + (NODEF ? '|nd' : ''); if (PHC.has(ck)) return PHC.get(ck);
   const w = phW(role), parts = PRINCIPLES.map((_, i) => principleScore(p, i, role.strata));
@@ -6722,7 +6758,7 @@ async function renderPhilo(){
         <div class="phl-two">
           <section class="panel" aria-labelledby="phl-s-h"><div class="rl-h"><h2 id="phl-s-h">How it’s scored</h2></div>
             <div style="padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--silver)">
-              <p style="margin:0">A principle’s score is the average percentile of its stats against players in the role’s position group. The philosophy score weights the six by the role’s dots. If less than 60% of the weight can be measured, there’s no score.</p>
+              <p style="margin:0">A principle’s score is the average percentile of its evidence groups against players in the role’s position group. The philosophy score weights the six principles by the role’s dots. If less than 60% of the weight can be measured, there’s no score.</p><p style="margin:0;color:var(--muted);font-size:11.5px">Isolation avoids double-counting related signals: open-play key passes, xA and clear-cut chances share one creation group; pressing volume and success share one group. FM24 season exports do not provide a dependable dribble-success rate or measure off-ball space creation, so those still need scouting.</p>
               <div class="phl-band"><span class="phc fit">✓ Fits the idea</span>70 and above</div><div class="phl-band"><span class="phc coach">Coachable</span>50 to 69</div><div class="phl-band"><span class="phc against">${warn_icon()}Against the idea</span>under 50</div>
               <p style="margin:0;color:var(--muted);font-size:11.5px">Shown beside the role score on the player page, DoF picks and the scouting report.</p></div></section>
           <section class="panel" aria-labelledby="phl-c-h"><div class="rl-h"><h2 id="phl-c-h">Character test</h2><span>From Personality in the export</span></div>
