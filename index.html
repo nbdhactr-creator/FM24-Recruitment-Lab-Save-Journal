@@ -5083,7 +5083,8 @@ function wsCrest(sv){ if (sv.badge) return `<img ${imgAttrs(sv.badge)} alt="">`;
 async function openSave(id, label){
   await flushAll(); await mgr();
   S.save = S.saves.find(s => s.id === id) || S.saves[0]; if (!S.save) return;
-  ensureSaveDefaults(S.save); setAccent(S.save.accent); SQ.season = null; SQ.ckId = null;
+  const needsPhilosophyMigration = !S.save.philo || typeof S.save.philo !== 'object';
+  ensureSaveDefaults(S.save); if (needsPhilosophyMigration) await persist(); setAccent(S.save.accent); SQ.season = null; SQ.ckId = null;
   const ss = seasonsSorted(S.save); fillSaveSelect();
   if (!ss.length){ S.season = null; clearCaches(); $('loading').hidden = true; setTab(S.tab); Store.setMeta({active:S.save.id}); return; }
   const target = ss.find(x => x.label === label) || ss[ss.length-1];
@@ -6690,7 +6691,7 @@ function phDefPos(r){ const s = r.strata, by = (a, b) => s === a ? b : null;
 function phCfg(){ return (S.save && S.save.philo) || (MG.doc && MG.doc.philo) || {}; }
 function phEdit(){ if (!S.save) throw new Error('Open a save before editing its philosophy'); if (!S.save.philo || typeof S.save.philo !== 'object') S.save.philo = MG.doc && MG.doc.philo ? JSON.parse(JSON.stringify(MG.doc.philo)) : {template:'possession'}; return S.save.philo; }
 function phMix(){ const n = Number(phCfg().tacticalWeight); return Number.isFinite(n) ? Math.max(50, Math.min(80, n)) : 70; }
-function phTemplateSelectOptions(){ const c = phCfg(), custom = !!c.custom; return (custom ? '<option value="custom" selected disabled>Custom philosophy (edited)</option>' : '') + Object.entries(PH_TEMPLATES).map(([k,t]) => `<option value="${k}"${!custom && (c.template || 'possession') === k ? ' selected' : ''}>${esc(t.name)}${!custom && c.template === k ? ' · active' : ''}</option>`).join(''); }
+function phTemplateSelectOptions(){ const c = phCfg(), custom = !!c.custom, active = PH_TEMPLATES[c.template] ? PH_TEMPLATES[c.template].name : 'philosophy'; return (custom ? `<option value="custom" selected disabled>Custom · ${esc(active)}</option>` : '') + Object.entries(PH_TEMPLATES).map(([k,t]) => `<option value="${k}"${!custom && (c.template || 'possession') === k ? ' selected' : ''}>${esc(t.name)}${!custom && c.template === k ? ' · active' : ''}</option>`).join(''); }
 function phKey(r){ return r.type + '|' + r.duty; }
 function phW(r){ const c = phCfg(); const w = c.w && c.w[phKey(r)]; return Array.isArray(w) && w.length === 6 ? w : (PH_DEF_W[r.type] || [2,2,2,2,1,2]); }
 function phPos(r){ const c = phCfg(); const v = c.pos && c.pos[r.id]; return Array.isArray(v) ? v.filter(x => STRATA[x] && x !== r.strata) : phDefPos(r); }
@@ -6778,7 +6779,7 @@ function bindPosChips(){ const box = $('poschips'); if (!box) return;
   $('posonly').addEventListener('change', renderPosChips); }
 
 /* ---------- Philosophy score page ---------- */
-const PHV = {bound:false, sel:null};
+const PHV = {bound:false, sel:null, previewRole:null, previewPlayer:null};
 function phStatNote(k){ const notes = {'Pas %':'Pass completion: ball security, not progressive intent.','Loss rate':'Possession lost relative to involvement; lower is better.','Ps A/90':'Pass attempts per 90: involvement proxy, not off-ball movement.','Pr passes/90':'Progressive passes per 90: forward progression.','Verticality':'Forward intent in passing; interpret alongside completion and role.','OP-KP/90':'Open-play key passes per 90: direct chance creation.','xA/90':'Expected assists per 90: quality of chances created.','CCC/90':'Clear-cut chances created per 90: high-value chance creation.','Drb/90':'Dribbles per 90: 1v1 involvement, not dribble success or space created.','npxG/90':'Non-penalty expected goals per 90: shot threat.','Pres A/90':'Pressing actions per 90: activity, not success on its own.','Pres C/90':'Successful pressures per 90: pressing outcomes.','Press success':'Share of pressures that succeed; pair with activity volume.','Poss Won/90':'Possessions won per 90: recovery outcomes.','Int/90':'Interceptions per 90: reading and cutting out passes.','Tck W/90':'Tackles won per 90: defensive action volume and outcomes.','Tck R':'Tackle success rate: effectiveness, not volume.','Hdr %':'Header success rate: aerial effectiveness.','Dist/90 km':'Distance covered per 90: engine and work output.','Sprints/90':'Sprints per 90: high-intensity running volume.','Sprints/km':'Sprint frequency relative to distance covered.'}; return notes[k] || 'Position-group percentile. Check role context before treating it as a positive signal.'; }
 function phRolesInUse(){ const out = new Map(); const add = (id, lab) => { const r = roleById[id]; if (!r) return; if (!out.has(id)) out.set(id, new Set()); if (lab) out.get(id).add(lab); };
   const save = S.save, tactics = save && save.tactics && save.tactics.length ? save.tactics : (save ? tacticList() : []);
@@ -6790,10 +6791,29 @@ function phRolesInUse(){ const out = new Map(); const add = (id, lab) => { const
 async function renderPhilo(){
   const root = $('philo-root'); await mgr(); if (S.tab !== 'philo') return;
   const rows = phRolesInUse(), c = phCfg(), usable = S.season ? S.season.usable : Object.keys(SMETA);
-  const activeTactic = S.tac || (S.save && S.save.tactics && S.save.tactics[0]), activeCode = activeTactic && (FORMATIONS[activeTactic.formation] || [])[0];
-  const previewRole = (PHV.sel && roleById[PHV.sel]) || (activeTactic && roleById[activeTactic.roles[activeCode]]) || (rows[0] && rows[0].r) || null;
-  const previewPlayers = S.season && previewRole ? S.season.players.filter(p => (p.mins || 0) >= 450 && posOK(p, previewRole)).map(p => ({p, role:roleScore(p, previewRole), ph:philo(p, previewRole)})).filter(p => p.role != null).sort((a,b) => tacticRoleScore(b.p, previewRole)-tacticRoleScore(a.p, previewRole)).slice(0,3) : [];
-  const previewHtml = `<section class="panel" style="padding:14px 16px;margin-bottom:12px"><div class="rl-h"><h2>Live philosophy preview</h2><span>${previewRole ? esc(roleTitle(previewRole)) : 'Choose a role in your tactic'}</span></div><p class="hint" style="margin:0 0 10px">These are the top combined-fit players in the current export for the selected role. The separate role and philosophy columns show why they rank here.</p>${previewPlayers.length ? `<div class="tablewrap"><table><thead><tr><th>Player</th><th class="num">Role fit</th><th class="num">Philosophy</th><th class="num">Combined</th></tr></thead><tbody>${previewPlayers.map(x => `<tr><td><b>${esc(x.p.name)}</b><small class="rl-sub" style="display:block">${esc(x.p.club)}</small></td><td class="num">${Math.round(x.role)}</td><td class="num">${x.ph == null ? 'Not enough evidence' : Math.round(x.ph)}</td><td class="num"><b>${x.ph == null ? Math.round(x.role) + ' · role only' : tacticRoleScore(x.p, previewRole)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="hint" style="margin:0">Import a season with enough minutes and usable evidence to preview player scores.</p>'}</section>`;
+  const tacticRoleIds = rows.map(x => x.r.id);
+  const defaultPreview = tacticRoleIds.find(id => id === S.role) || tacticRoleIds.find(id => roleById[id] && roleById[id].strata !== 'GK') || tacticRoleIds[0] || null;
+  const previewRole = roleById[PHV.previewRole] && tacticRoleIds.includes(PHV.previewRole) ? roleById[PHV.previewRole] : (roleById[defaultPreview] || null);
+  PHV.previewRole = previewRole ? previewRole.id : null;
+  const previewCandidates = S.season && previewRole ? S.season.players.filter(p => (p.mins || 0) >= 450 && posOK(p, previewRole)).map(p => ({p, role:roleScore(p, previewRole), ph:philo(p, previewRole)})).filter(x => x.role != null).sort((a,b) => tacticRoleScore(b.p, previewRole)-tacticRoleScore(a.p, previewRole)).slice(0,100) : [];
+  if (!previewCandidates.some(x => x.p.key === PHV.previewPlayer)) PHV.previewPlayer = previewCandidates[0] ? previewCandidates[0].p.key : null;
+  const preview = previewCandidates.find(x => x.p.key === PHV.previewPlayer) || null;
+  const previewBreakdown = preview && previewRole ? philoOf(preview.p, previewRole) : null;
+  const principleRows = preview && previewRole ? PRINCIPLES.map((pr,i) => {
+    const statRows = phRoleStats(i, previewRole).map(k => ({k, v:statPct(preview.p,k,previewRole.strata)}));
+    const availableStats = statRows.filter(x => x.v != null);
+    const statsHtml = availableStats.length ? availableStats.map(x => `<span class="rl-chip neu" title="${esc(phStatNote(x.k))}">${esc(sLabel(x.k))} · ${Math.round(x.v)}th</span>`).join(' ') : '<span class="muted">No usable evidence</span>';
+    const w = previewBreakdown ? previewBreakdown.w[i] : 0, score = previewBreakdown ? previewBreakdown.parts[i] : null;
+    return `<tr><td><b>${esc(pr.name)}</b></td><td class="num">${w ? '●'.repeat(w) : '—'}</td><td class="num">${score == null ? '—' : score}</td><td>${statsHtml}</td></tr>`;
+  }).join('') : '';
+  const previewHtml = `<section class="panel" style="padding:14px 16px;margin-bottom:12px">
+    <div class="rl-h"><div><h2>Live philosophy analysis</h2><p class="hint" style="margin:3px 0 0">Choose a role and player to inspect the exact evidence behind their philosophy score.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><label class="sr" for="phl-preview-role">Role to analyse</label><select id="phl-preview-role" class="rl-sel" style="width:auto">${rows.map(x => `<option value="${esc(x.r.id)}"${previewRole && x.r.id === previewRole.id ? ' selected' : ''}>${esc(x.r.name)} · ${esc(x.r.dutyName)}</option>`).join('')}</select>
+    <label class="sr" for="phl-preview-player">Player to analyse</label><select id="phl-preview-player" class="rl-sel" style="width:auto;max-width:260px">${previewCandidates.map((x,i) => `<option value="${esc(x.p.key)}"${x.p.key === PHV.previewPlayer ? ' selected' : ''}>${i+1}. ${esc(x.p.name)} · ${esc(x.p.club)}</option>`).join('')}</select></div></div>
+    ${preview ? `<div class="row" style="gap:16px;flex-wrap:wrap;margin:8px 0 12px"><span><b>${esc(preview.p.name)}</b> · ${esc(roleTitle(previewRole))}</span><span class="rl-chip neu">Role fit ${Math.round(preview.role)}</span><span class="rl-chip neu">Philosophy ${preview.ph == null ? 'insufficient evidence' : Math.round(preview.ph)}</span><span class="rl-chip neu">Combined ${tacticRoleScore(preview.p,previewRole)} · ${phMix()}/${100-phMix()} mix</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Principle</th><th class="num">Weight</th><th class="num">Percentile</th><th>Evidence indicators · position-group percentile</th></tr></thead><tbody>${principleRows}</tbody></table></div>
+    <p class="hint" style="margin:8px 0 0">Percentiles compare this player with the same position group in the current export. A dash means the export or minutes floor does not provide enough evidence; it is not treated as zero.</p>` : '<p class="hint" style="margin:0">Import a season with enough minutes and usable evidence to inspect a player’s philosophy breakdown.</p>'}
+  </section>`;
   const prin = PRINCIPLES.map((pr, i) => { const ks = phStats(i);
     const available = ks.filter(k => usable.includes(k)).length;
     return `<article class="phl-card"><h3><span class="k">${i + 1}</span>${esc(pr.name)}<small>${esc(pr.from)}</small></h3><q>${esc(pr.creed)}</q><p class="hint" style="margin:6px 0 8px;font-size:11px">${available}/${ks.length} configured indicators present in ${S.season ? 'this season export' : 'the FM export schema'}${available < ks.length ? ' · missing indicators are not scored' : ''}</p>
@@ -6851,7 +6871,9 @@ function bindPhilo(root){
     if (t.dataset.phstatAdd && t.value){ const i = +t.dataset.phstatAdd, c = phEdit(); c.stats = c.stats || {}; c.stats[PRINCIPLES[i].id] = phStats(i).concat(t.value); c.custom = true; phChanged(); return; }
     if (t.id === 'phl-addrole' && t.value){ const c = phEdit(); c.extra = (c.extra || []).filter(x => x !== t.value).concat(t.value); c.custom = true; PHV.sel = t.value; phChanged(); return; }
     if (t.id === 'phl-charout'){ const c = phEdit(); c.charOut = t.checked; c.custom = true; phChanged(); return; }
-    if (t.id === 'phl-mix'){ const c = phEdit(); c.tacticalWeight = +t.value; c.custom = true; phChanged(); return; } });
+    if (t.id === 'phl-mix'){ const c = phEdit(); c.tacticalWeight = +t.value; c.custom = true; phChanged(); return; }
+    if (t.id === 'phl-preview-role'){ PHV.previewRole = t.value; PHV.previewPlayer = null; renderPhilo(); return; }
+    if (t.id === 'phl-preview-player'){ PHV.previewPlayer = t.value; renderPhilo(); return; } });
 }
 
 /* ================= Director of Football picks (budget and wage cap stored on the save: save.dof) ================= */
