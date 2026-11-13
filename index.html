@@ -4427,15 +4427,18 @@ function renderTactic(){
   const clubXIs = clubs.map(c => bestXI(byClub[c] || [], S.tac, minM));
   const mine = S.save.myClub ? bestXIP(S.season.players.filter(p => p.club === S.save.myClub), S.tac, minM, xiPins(S.tac)) : null;
   $('benchnote').textContent = `Benchmark: each of the ${clubs.length} clubs in ${bname} gets its own best XI using the combined tactical-role and philosophy score, and the figures are the median combined score of the player each club fields in that slot.${mine ? ' Your column is ' + S.save.myClub + "'s best XI." : ' Set your club in Save settings to compare your squad.'}`;
-  $('bhead').innerHTML = `<tr><th>Slot</th><th>Role</th>${mine?'<th>Your player</th>':''}<th class="num">${mine?'Your score':''}</th><th class="num">Benchmark score</th>${mine?'<th class="num">Gap</th>':''}<th>Key stats${mine?' (yours / benchmark)':' (benchmark)'}</th></tr>`;
+  $('bhead').innerHTML = `<tr><th>Slot</th><th>Role</th>${mine?'<th>Your player</th>':''}<th class="num">${mine?'Your combined score':''}</th><th class="num">Benchmark combined score</th>${mine?'<th class="num">Gap</th>':''}<th>Key stats${mine?' (yours / benchmark)':' (benchmark)'}</th></tr>`;
   $('bbody').innerHTML = FORMATIONS[S.tac.formation].map((c,i) => {
     const role = roleById[S.tac.roles[c]], ks = topStats(role, 3);
     const bp = clubXIs.map(x => x[i]).filter(d => d.p);
-    const bsc = median(bp.map(d => d.sc)); const bst = ks.map(k => median(bp.map(d => statVal(d.p, k))));
-    const md = mine ? mine[i] : null; const gap = (md && md.sc != null && bsc != null) ? Math.round(md.sc - bsc) : null;
+    const bsc = median(bp.map(d => d.sc)); const bRole = median(bp.map(d => roleScore(d.p, role))), bPh = median(bp.map(d => philo(d.p, role)));
+    const bst = ks.map(k => median(bp.map(d => statVal(d.p, k))));
+    const md = mine ? mine[i] : null, mRole = md && md.p ? roleScore(md.p, role) : null, mPh = md && md.p ? philo(md.p, role) : null;
+    const scoreParts = (r, p) => `<span class="sub">Role ${r == null ? '–' : Math.round(r)} · Philosophy ${p == null ? 'n/a' : Math.round(p)}</span>`;
+    const gap = (md && md.sc != null && bsc != null) ? Math.round(md.sc - bsc) : null;
     const stats = ks.map((k,j) => { const yv = md && md.p ? statVal(md.p, k) : null; const better = yv != null && bst[j] != null ? (dirOf(k) * (yv - bst[j]) >= 0) : null;
       return `<span style="display:inline-block;margin-right:14px"><span class="pclub">${esc(k)}</span> ${mine ? `<b class="${better==null?'':better?'delta-pos':'delta-neg'}">${fmt(yv,k)}</b> / ` : ''}${fmt(bst[j],k)}</span>`; }).join('');
-    return `<tr><td><b>${SLOT_LABEL[c]}</b></td><td>${esc(role.name)}<span class="sub">${esc(role.dutyName)}</span></td>${mine?`<td>${md && md.p ? `<span class="pname">${esc(md.p.name)}</span><span class="sub">${esc(md.p.age)}, ${esc(md.p.tv||'')}</span>` : '<span class="pclub">No eligible player</span>'}</td>`:''}<td class="num">${mine?(md && md.sc != null ? md.sc : '–'):''}</td><td class="num">${bsc != null ? Math.round(bsc) : '–'}</td>${mine?`<td class="num ${gap==null?'':gap>=0?'delta-pos':'delta-neg'}">${gap==null?'–':(gap>0?'+':'')+gap}</td>`:''}<td>${stats}</td></tr>`;
+    return `<tr><td><b>${SLOT_LABEL[c]}</b></td><td>${esc(role.name)}<span class="sub">${esc(role.dutyName)}</span></td>${mine?`<td>${md && md.p ? `<span class="pname">${esc(md.p.name)}</span><span class="sub">${esc(md.p.age)}, ${esc(md.p.tv||'')}</span>` : '<span class="pclub">No eligible player</span>'}</td>`:''}<td class="num">${mine?(md && md.sc != null ? `${md.sc}${scoreParts(mRole, mPh)}` : '–'):''}</td><td class="num">${bsc != null ? `${Math.round(bsc)}${scoreParts(bRole, bPh)}` : '–'}</td>${mine?`<td class="num ${gap==null?'':gap>=0?'delta-pos':'delta-neg'}">${gap==null?'–':(gap>0?'+':'')+gap}</td>`:''}<td>${stats}</td></tr>`;
   }).join('');
 }
 
