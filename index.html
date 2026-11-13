@@ -1993,6 +1993,7 @@ dialog.rptdlg[open]{display:flex;flex-direction:column}
         <div class="grid g5">
           <div class="field"><label for="tacsel">Tactic</label><select id="tacsel"></select></div>
           <div class="field"><label for="formsel">Formation</label><select id="formsel"></select></div>
+          <div class="field"><label for="philosel">Philosophy</label><div style="display:flex;gap:6px;align-items:stretch"><select id="philosel" style="flex:1;min-width:0"></select><button class="btn sm" id="philo-edit" type="button" title="Edit this save’s philosophy">Edit</button></div></div>
           <div class="field"><label for="xiscope">Show</label><select id="xiscope"><option value="mine">Your squad's best XI</option><option value="league">A league's best XI</option><option value="group">A comparison group's best XI</option></select></div>
           <div class="field" id="xileaguewrap"><label for="xileague">League</label><select id="xileague"></select></div>
           <div class="field"><label for="ximins">Min minutes for selection</label><input id="ximins" type="number" min="0" step="100" value="900" inputmode="numeric"></div>
@@ -3109,7 +3110,7 @@ async function renderTeamComparison(){
   const depthRows=slots.map(slot=>{
     const assigned=squadXI.find(x=>x.code===slot.code);
     const pool=players.filter(p=>(listedFor(p,slot.role)||phPos(slot.role).some(st=>inStrata(p,st)))&&p.mins>=TC.minM)
-      .map(p=>({p,score:roleScore(p,slot.role)})).filter(x=>x.score!=null).sort((a,b)=>b.score-a.score);
+      .map(p=>({p,score:tacticRoleScore(p,slot.role)})).filter(x=>x.score!=null).sort((a,b)=>b.score-a.score);
     const starter=assigned&&assigned.p?assigned:{p:null,sc:null};
     const backup=pool.find(x=>!starter.p||x.p.key!==starter.p.key)||null;
     const marketPool=S.season.players.filter(p=>tcClubKey(p.club,p.div)!==TC.focus&&(listedFor(p,slot.role)||phPos(slot.role).some(st=>inStrata(p,st)))&&p.mins>=TC.minM)
@@ -3337,13 +3338,9 @@ function roleScore(p, role){
   m.set(p.i, sc); return sc;
 }
 function tacticRoleScore(p, role){
-  const tactical = roleScore(p, role);
-  if (tactical == null) return null;
-  const philosophy = philo(p, role);
-  // Match the existing Foundation model's tactical-to-philosophy ratio (45:35),
-  // normalised to the two dimensions used by the Tactic & Best XI page.
-  if (philosophy == null) return tactical;
-  return Math.round((tactical * 45 + philosophy * 35) / 80);
+  const tactical = roleScore(p, role); if (tactical == null) return null;
+  const philosophy = philo(p, role); if (philosophy == null) return tactical;
+  const tw = phMix(); return Math.round((tactical * tw + philosophy * (100 - tw)) / 100);
 }
 function topStats(role, n){ return Object.entries(roleEffectiveWeights(role)).sort((a,b) => b[1]-a[1]).slice(0, n).map(x => x[0]); }
 
@@ -4378,6 +4375,7 @@ function fillTacticUI(){
   const ts = tacticList(); if (!S.tac || !ts.find(t => t.id === S.tac.id)) S.tac = JSON.parse(JSON.stringify(ts[0]));
   $('tacsel').innerHTML = ts.map(t => `<option value="${t.id}"${t.id===S.tac.id?' selected':''}>${esc(t.name)}</option>`).join('');
   $('formsel').innerHTML = Object.keys(FORMATIONS).map(f => `<option${f===S.tac.formation?' selected':''}>${f}</option>`).join('');
+  $('philosel').innerHTML = phTemplateSelectOptions();
   const lg = [...S.season.leagues].sort((a,b) => ((REP.get(norm(b))||{stars:0}).stars - (REP.get(norm(a))||{stars:0}).stars) || a.localeCompare(b));
   const prevL = $('xileague').value || S.save.myLeague || lg[0];
   $('xileague').innerHTML = lg.map(d => `<option value="${esc(d)}"${d===prevL?' selected':''}>${esc(d)}</option>`).join('');
@@ -4393,6 +4391,8 @@ function renderSlots(){
 $('slots').addEventListener('change', e => { const s = e.target.closest('select[data-slot]'); if (!s) return; S.tac.roles[s.dataset.slot] = s.value; renderTactic(); });
 $('tacsel').onchange = () => { S.tac = JSON.parse(JSON.stringify(tacticList().find(t => t.id === $('tacsel').value))); renderSlots(); renderTactic(); };
 $('formsel').onchange = () => { S.tac.formation = $('formsel').value; renderSlots(); renderTactic(); };
+$('philosel').onchange = () => { const k = $('philosel').value; if (k && k !== 'custom') applyPhTemplate(k); };
+$('philo-edit').onclick = () => setTab('philo');
 ['xiscope','xileague','ximins','grpsel'].forEach(id => $(id).addEventListener(id === 'ximins' ? 'input' : 'change', renderTactic));
 $('tacnew').onclick = async () => { const name = await ask({title:'New tactic', input:S.tac.formation, label:'Name', ok:'Create tactic'}); if (!name) return; const t = JSON.parse(JSON.stringify(S.tac)); t.id = 't' + Date.now().toString(36); t.name = name; tacticList().push(t); S.tac = JSON.parse(JSON.stringify(t)); await persist(); fillTacticUI(); renderTactic(); toast('Tactic created'); };
 $('tacsave').onclick = async () => { const ts = tacticList(); const i = ts.findIndex(t => t.id === S.tac.id); ts[i] = JSON.parse(JSON.stringify(S.tac)); await persist(); toast('Tactic saved'); };
@@ -4426,7 +4426,7 @@ function renderTactic(){
   const byClub = {}; S.season.players.forEach(p => { (byClub[p.club] = byClub[p.club] || []).push(p); });
   const clubXIs = clubs.map(c => bestXI(byClub[c] || [], S.tac, minM));
   const mine = S.save.myClub ? bestXIP(S.season.players.filter(p => p.club === S.save.myClub), S.tac, minM, xiPins(S.tac)) : null;
-  $('benchnote').textContent = `Benchmark: each of the ${clubs.length} clubs in ${bname} gets its own best XI using the combined tactical-role and philosophy score, and the figures are the median combined score of the player each club fields in that slot.${mine ? ' Your column is ' + S.save.myClub + "'s best XI." : ' Set your club in Save settings to compare your squad.'}`;
+  $('benchnote').textContent = `Benchmark: each of the ${clubs.length} clubs in ${bname} gets its own best XI using the combined score (${phMix()}% tactical role fit + ${100-phMix()}% philosophy when evidence is available), and the figures are the median combined score of the player each club fields in that slot.${mine ? ' Your column is ' + S.save.myClub + "'s best XI." : ' Set your club in Save settings to compare your squad.'}`;
   $('bhead').innerHTML = `<tr><th>Slot</th><th>Role</th>${mine?'<th>Your player</th>':''}<th class="num">${mine?'Your combined score':''}</th><th class="num">Benchmark combined score</th>${mine?'<th class="num">Gap</th>':''}<th>Key stats${mine?' (yours / benchmark)':' (benchmark)'}</th></tr>`;
   $('bbody').innerHTML = FORMATIONS[S.tac.formation].map((c,i) => {
     const role = roleById[S.tac.roles[c]], ks = topStats(role, 3);
@@ -4434,7 +4434,7 @@ function renderTactic(){
     const bsc = median(bp.map(d => d.sc)); const bRole = median(bp.map(d => roleScore(d.p, role))), bPh = median(bp.map(d => philo(d.p, role)));
     const bst = ks.map(k => median(bp.map(d => statVal(d.p, k))));
     const md = mine ? mine[i] : null, mRole = md && md.p ? roleScore(md.p, role) : null, mPh = md && md.p ? philo(md.p, role) : null;
-    const scoreParts = (r, p) => `<span class="sub">Role ${r == null ? '–' : Math.round(r)} · Philosophy ${p == null ? 'n/a' : Math.round(p)}</span>`;
+    const scoreParts = (r, p) => `<span class="sub">${phMix()}% role: ${r == null ? '–' : Math.round(r)} · ${100-phMix()}% philosophy: ${p == null ? 'n/a' : Math.round(p)}</span>`;
     const gap = (md && md.sc != null && bsc != null) ? Math.round(md.sc - bsc) : null;
     const stats = ks.map((k,j) => { const yv = md && md.p ? statVal(md.p, k) : null; const better = yv != null && bst[j] != null ? (dirOf(k) * (yv - bst[j]) >= 0) : null;
       return `<span style="display:inline-block;margin-right:14px"><span class="pclub">${esc(k)}</span> ${mine ? `<b class="${better==null?'':better?'delta-pos':'delta-neg'}">${fmt(yv,k)}</b> / ` : ''}${fmt(bst[j],k)}</span>`; }).join('');
@@ -5081,7 +5081,7 @@ function wsCrest(sv){ if (sv.badge) return `<img ${imgAttrs(sv.badge)} alt="">`;
   const ini = clubName(sv).split(/\s+/).filter(w => /^[A-Za-zÀ-ÿ]/.test(w)).map(w => w[0]).join('').slice(0, 3).toUpperCase() || '?';
   return `<svg viewBox="0 0 30 34" width="30" height="34"><defs><linearGradient id="ws-cr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A4D54"/><stop offset="1" stop-color="#22242A"/></linearGradient></defs><path d="M15 1.5 28 6v10.5c0 7.5-5.6 12.7-13 16-7.4-3.3-13-8.5-13-16V6z" fill="url(#ws-cr)" stroke="#F2B33D" stroke-width="1.4"/><text x="15" y="20.5" text-anchor="middle" font-family="Barlow Condensed, Arial Narrow, sans-serif" font-weight="700" font-size="${ini.length > 2 ? 10 : 12}" fill="#ECEDEF">${esc(ini)}</text></svg>`; }
 async function openSave(id, label){
-  await flushAll();
+  await flushAll(); await mgr();
   S.save = S.saves.find(s => s.id === id) || S.saves[0]; if (!S.save) return;
   ensureSaveDefaults(S.save); setAccent(S.save.accent); SQ.season = null; SQ.ckId = null;
   const ss = seasonsSorted(S.save); fillSaveSelect();
@@ -5191,7 +5191,7 @@ $('imp-go').onclick = async () => {
     prog(60, `Storing ${obj.rows.length.toLocaleString()} players`); const ref = await Store.putSeason(obj);
     let save; const sid = $('imp-save').value, previousActiveSave = S.save;
     const isNewSave = sid === '__new';
-    if (isNewSave){ save = {id:newId(), name: $('imp-newname').value.trim() || 'New save', created: new Date().toISOString(), myLeague:'', myClub:'', accent:'#F2B33D', seasons:[], history:[], groups:[], tactics:[], searches:[]}; S.saves.push(save); }
+    if (isNewSave){ save = {id:newId(), name: $('imp-newname').value.trim() || 'New save', created: new Date().toISOString(), myLeague:'', myClub:'', accent:'#F2B33D', seasons:[], history:[], groups:[], tactics:[], searches:[], philo:{template:'possession'}}; S.saves.push(save); }
     else save = S.saves.find(s => s.id === sid);
     if (!save) throw new Error('The selected save could not be found. Please reopen the import window and try again.');
     const saveBefore = JSON.parse(JSON.stringify(save));
@@ -5298,7 +5298,7 @@ $('ns-ok').onclick = async () => {
   const club = $('ns-club').value.trim(), name = $('ns-name').value.trim() || club; if (!name){ $('ns-status').innerHTML = '<span class="err">Give the save a name.</span>'; return; }
   const start = normSeason($('ns-start').value) || slabel(new Date().getFullYear()), cur = normSeason($('ns-current').value) || start;
   const league = $('ns-league').value.trim();
-  const save = {id:newId(), name, created:new Date().toISOString(), myLeague:league, myClub:club, accent:'#F2B33D', seasons:[], groups:[], tactics:[], searches:[], database:$('ns-db').value.trim(), startSeason:start, currentSeason:cur, games:gamesFor(league)};
+  const save = {id:newId(), name, created:new Date().toISOString(), myLeague:league, myClub:club, accent:'#F2B33D', seasons:[], groups:[], tactics:[], searches:[], philo:{template:'possession'}, database:$('ns-db').value.trim(), startSeason:start, currentSeason:cur, games:gamesFor(league)};
   ensureSaveDefaults(save); S.saves.push(save); S.save = save; await persist(); $('dlg-newsave').close(); S.tab = 'home'; await openSave(save.id); toast('Save created');
 };
 function showOnboardIfNeeded(){ if (!S.save && !FREE_TABS.has(S.tab)){ $('onboard').hidden = false; } }
@@ -5503,6 +5503,7 @@ window.addEventListener('pagehide', () => { flushAll(); });
 function gamesFor(league){ const l = String(league || ''); if (/championship|league one|league two/i.test(l)) return 46; if (/bundesliga|eredivisie|ligue 1|ligue 2|pro league|liga portugal/i.test(l)) return 34; return 38; }
 function ensureSaveDefaults(s){
   if (!s) return; const ss = seasonsSorted(s);
+  if (!s.philo || typeof s.philo !== 'object') s.philo = MG.doc && MG.doc.philo ? JSON.parse(JSON.stringify(MG.doc.philo)) : {template:'possession'};
   s.leagueFactors = s.leagueFactors && typeof s.leagueFactors === 'object' ? s.leagueFactors : {};
   if (!s.startSeason) s.startSeason = ss.length ? ss[0].label : slabel(new Date().getFullYear());
   if (!s.currentSeason) s.currentSeason = ss.length ? ss[ss.length - 1].label : s.startSeason;
@@ -6307,7 +6308,7 @@ function dofEvaluationScore(p, role, coreScore){
   const aerial = dofAerialScore(p, role);
   return aerial == null ? coreScore : Math.round(coreScore * 0.9 + aerial * 0.1);
 }
-function dispScore(p, role){ const sc = dofEvaluationScore(p, role, roleScore(p, role)); return shrinkOn() ? shrinkV(sc, p.mins) : sc; }
+function dispScore(p, role){ const sc = dofEvaluationScore(p, role, tacticRoleScore(p, role)); return shrinkOn() ? shrinkV(sc, p.mins) : sc; }
 function confOf(p, pr){ const m = p.mins || 0; return m >= confHi(pr) ? 3 : m >= confMid(pr) ? 2 : 1; }
 function confHtml(p){ const c = confOf(p), t = ['', 'Low', 'Medium', 'High'][c]; return `<span class="conf c${c}" title="${t} confidence: ${Math.round(p.mins || 0).toLocaleString()} minutes (high from ${confHi().toLocaleString()}, medium from ${confMid().toLocaleString()}${curProg() < 1 ? ', scaled for a ' + PROG_SHORT[curProg()] : ''})"><i></i><i></i><i></i><span class="sr">${t} confidence</span></span>`; }
 /* ---------- feasibility: a stronger current league plus an ambitious personality ---------- */
@@ -6641,6 +6642,13 @@ const PH_ISOLATION_EVIDENCE_FAMILIES = {
   front:[['Int/90'],['Tck W/90','Tck R']],
   int:[['Dist/90 km','Sprints/90','Sprints/km']]
 };
+const PH_EVIDENCE_FAMILIES = {
+  keep:[['Pas %','Loss rate']], avail:[['Ps A/90']],
+  hurt:[['Pr passes/90','Verticality'],['OP-KP/90','xA/90','CCC/90'],['Drb/90'],['npxG/90'],['OP-Crs C/90','OP-Cr %']],
+  win:[['Pres A/90','Pres C/90','Press success'],['Poss Won/90']],
+  front:[['Int/90'],['Tck W/90','Tck R'],['Hdr %']],
+  int:[['Dist/90 km'],['Sprints/90','Sprints/km']]
+};
 // Role-specific attacking evidence. Wide creators are assessed on delivery; central attackers on
 // threat and chance creation; midfield suppliers on progression; the stable core on safe progression.
 // The position-group percentile comparison remains the same as the rest of the philosophy model.
@@ -6679,8 +6687,10 @@ function phDefPos(r){ const s = r.strata, by = (a, b) => s === a ? b : null;
     am:['MC'], eng:['MC'], ss:['ST'], treq: by('AMC', ['ST']) || ['AMC'],
     if:['ST'], raum:['ST'], wtf:['ST'], cf:['AMLR'], dlf:['AMC'], f9:['AMC','AMLR'], pf:['AMLR']};
   return (M[r.type] || []).filter(x => x !== s && STRATA[x]); }
-function phCfg(){ return (MG.doc && MG.doc.philo) || {}; }
-function phEdit(){ const d = MG.doc; if (!d) throw new Error('profile not loaded'); if (!d.philo || typeof d.philo !== 'object') d.philo = {}; return d.philo; }
+function phCfg(){ return (S.save && S.save.philo) || (MG.doc && MG.doc.philo) || {}; }
+function phEdit(){ if (!S.save) throw new Error('Open a save before editing its philosophy'); if (!S.save.philo || typeof S.save.philo !== 'object') S.save.philo = MG.doc && MG.doc.philo ? JSON.parse(JSON.stringify(MG.doc.philo)) : {template:'possession'}; return S.save.philo; }
+function phMix(){ const n = Number(phCfg().tacticalWeight); return Number.isFinite(n) ? Math.max(50, Math.min(80, n)) : 70; }
+function phTemplateSelectOptions(){ const c = phCfg(), custom = !!c.custom; return (custom ? '<option value="custom" selected disabled>Custom philosophy (edited)</option>' : '') + Object.entries(PH_TEMPLATES).map(([k,t]) => `<option value="${k}"${!custom && (c.template || 'possession') === k ? ' selected' : ''}>${esc(t.name)}${!custom && c.template === k ? ' · active' : ''}</option>`).join(''); }
 function phKey(r){ return r.type + '|' + r.duty; }
 function phW(r){ const c = phCfg(); const w = c.w && c.w[phKey(r)]; return Array.isArray(w) && w.length === 6 ? w : (PH_DEF_W[r.type] || [2,2,2,2,1,2]); }
 function phPos(r){ const c = phCfg(); const v = c.pos && c.pos[r.id]; return Array.isArray(v) ? v.filter(x => STRATA[x] && x !== r.strata) : phDefPos(r); }
@@ -6701,7 +6711,7 @@ function phStats(i){
   return Array.isArray(v) && v.length ? v : (c.template === 'isolation' ? PH_ISOLATION_STATS[id] : null) || PRINCIPLES[i].stats;
 }
 function phCharOut(){ return phCfg().charOut !== false; }
-function phChanged(){ PHC.clear(); mgrSoon(); }
+function phChanged(){ clearCaches(); if (S.save) persist(); if (S.season && $('philosel')) $('philosel').innerHTML = phTemplateSelectOptions(); renderTab(); }
 
 /* ---------- scores ---------- */
 const PHC = new Map();
@@ -6719,27 +6729,13 @@ function phRoleStats(i, role){
   return phStats(i);
 }
 function principleScore(p, i, st, role){
-  const keys = phRoleStats(i, role);
-  if (phCfg().template !== 'isolation'){
-    let a = 0, n = 0;
-    keys.forEach(k => { const q = statPct(p, k, st); if (q != null){ a += q; n++; } });
-    return n ? a / n : null;
-  }
-  const configuredFamilies = PH_ISOLATION_EVIDENCE_FAMILIES[PRINCIPLES[i].id] || [];
+  const keys = phRoleStats(i, role), id = PRINCIPLES[i].id;
+  const families = phCfg().template === 'isolation' ? (PH_ISOLATION_EVIDENCE_FAMILIES[id] || []) : (PH_EVIDENCE_FAMILIES[id] || []);
   const buckets = new Map();
-  keys.forEach(k => {
-    const family = configuredFamilies.find(group => group.includes(k));
-    const id = family ? family[0] : k;
-    if (!buckets.has(id)) buckets.set(id, []);
-    buckets.get(id).push(k);
-  });
+  keys.forEach(k => { const family = families.find(group => group.includes(k)), key = family ? family[0] : k; if (!buckets.has(key)) buckets.set(key, []); buckets.get(key).push(k); });
   const scores = [];
-  buckets.forEach(group => {
-    const values = group.map(k => statPct(p, k, st)).filter(v => v != null);
-    if (values.length) scores.push(values.reduce((a,b) => a+b, 0) / values.length);
-  });
-  // Require evidence from at least half of the configured families for this principle.
-  if (!buckets.size || scores.length / buckets.size < 0.5) return null;
+  buckets.forEach(group => { const values = group.map(k => statPct(p, k, st)).filter(v => v != null); if (values.length) scores.push(values.reduce((a,b) => a+b, 0) / values.length); });
+  if (!buckets.size || scores.length / buckets.size < 0.6) return null;
   return scores.length ? scores.reduce((a,b) => a+b, 0) / scores.length : null;
 }
 function philoOf(p, role){ if (!p || !role || !S.season) return null;
@@ -6783,8 +6779,10 @@ function bindPosChips(){ const box = $('poschips'); if (!box) return;
 
 /* ---------- Philosophy score page ---------- */
 const PHV = {bound:false, sel:null};
+function phStatNote(k){ const notes = {'Pas %':'Pass completion: ball security, not progressive intent.','Loss rate':'Possession lost relative to involvement; lower is better.','Ps A/90':'Pass attempts per 90: involvement proxy, not off-ball movement.','Pr passes/90':'Progressive passes per 90: forward progression.','Verticality':'Forward intent in passing; interpret alongside completion and role.','OP-KP/90':'Open-play key passes per 90: direct chance creation.','xA/90':'Expected assists per 90: quality of chances created.','CCC/90':'Clear-cut chances created per 90: high-value chance creation.','Drb/90':'Dribbles per 90: 1v1 involvement, not dribble success or space created.','npxG/90':'Non-penalty expected goals per 90: shot threat.','Pres A/90':'Pressing actions per 90: activity, not success on its own.','Pres C/90':'Successful pressures per 90: pressing outcomes.','Press success':'Share of pressures that succeed; pair with activity volume.','Poss Won/90':'Possessions won per 90: recovery outcomes.','Int/90':'Interceptions per 90: reading and cutting out passes.','Tck W/90':'Tackles won per 90: defensive action volume and outcomes.','Tck R':'Tackle success rate: effectiveness, not volume.','Hdr %':'Header success rate: aerial effectiveness.','Dist/90 km':'Distance covered per 90: engine and work output.','Sprints/90':'Sprints per 90: high-intensity running volume.','Sprints/km':'Sprint frequency relative to distance covered.'}; return notes[k] || 'Position-group percentile. Check role context before treating it as a positive signal.'; }
 function phRolesInUse(){ const out = new Map(); const add = (id, lab) => { const r = roleById[id]; if (!r) return; if (!out.has(id)) out.set(id, new Set()); if (lab) out.get(id).add(lab); };
-  (S.saves || []).forEach(s => (s.tactics && s.tactics.length ? s.tactics : (s === S.save ? tacticList() : [])).forEach(t => (FORMATIONS[t.formation] || []).forEach(c => add(t.roles && t.roles[c], `${s.myClub || s.name || 'Save'} ${t.formation}`))));
+  const save = S.save, tactics = save && save.tactics && save.tactics.length ? save.tactics : (save ? tacticList() : []);
+  tactics.forEach(t => (FORMATIONS[t.formation] || []).forEach(c => add(t.roles && t.roles[c], `${save.myClub || save.name || 'Save'} ${t.formation}`)));
   (phCfg().extra || []).forEach(id => add(id, ''));
   const order = Object.keys(STRATA);
   return [...out].map(([id, labs]) => ({r:roleById[id], labs:[...labs], extra:(phCfg().extra || []).includes(id)}))
@@ -6792,9 +6790,14 @@ function phRolesInUse(){ const out = new Map(); const add = (id, lab) => { const
 async function renderPhilo(){
   const root = $('philo-root'); await mgr(); if (S.tab !== 'philo') return;
   const rows = phRolesInUse(), c = phCfg(), usable = S.season ? S.season.usable : Object.keys(SMETA);
+  const activeTactic = S.tac || (S.save && S.save.tactics && S.save.tactics[0]), activeCode = activeTactic && (FORMATIONS[activeTactic.formation] || [])[0];
+  const previewRole = (PHV.sel && roleById[PHV.sel]) || (activeTactic && roleById[activeTactic.roles[activeCode]]) || (rows[0] && rows[0].r) || null;
+  const previewPlayers = S.season && previewRole ? S.season.players.filter(p => (p.mins || 0) >= 450 && posOK(p, previewRole)).map(p => ({p, role:roleScore(p, previewRole), ph:philo(p, previewRole)})).filter(p => p.role != null).sort((a,b) => b.role-a.role).slice(0,3) : [];
+  const previewHtml = `<section class="panel" style="padding:14px 16px;margin-bottom:12px"><div class="rl-h"><h2>Live philosophy preview</h2><span>${previewRole ? esc(roleTitle(previewRole)) : 'Choose a role in your tactic'}</span></div><p class="hint" style="margin:0 0 10px">These are the strongest role-fit players in the current export for the selected role. Changing the template, evidence or weights updates this preview and tactical selections.</p>${previewPlayers.length ? `<div class="tablewrap"><table><thead><tr><th>Player</th><th class="num">Role fit</th><th class="num">Philosophy</th><th class="num">Combined</th></tr></thead><tbody>${previewPlayers.map(x => `<tr><td><b>${esc(x.p.name)}</b><small class="rl-sub" style="display:block">${esc(x.p.club)}</small></td><td class="num">${Math.round(x.role)}</td><td class="num">${x.ph == null ? 'Not enough evidence' : Math.round(x.ph)}</td><td class="num"><b>${x.ph == null ? Math.round(x.role) + ' · role only' : tacticRoleScore(x.p, previewRole)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="hint" style="margin:0">Import a season with enough minutes and usable evidence to preview player scores.</p>'}</section>`;
   const prin = PRINCIPLES.map((pr, i) => { const ks = phStats(i);
-    return `<article class="phl-card"><h3><span class="k">${i + 1}</span>${esc(pr.name)}<small>${esc(pr.from)}</small></h3><q>${esc(pr.creed)}</q>
-      <div class="phl-stats">${ks.map(k => `<span class="rl-chip neu" title="${esc(k)}">${esc(sLabel(k))}${dirOf(k) < 0 && sLabel(k) === k ? ' (fewer is better)' : ''}${ks.length > 1 ? `<button type="button" data-phstat-rm="${i}" data-k="${esc(k)}" aria-label="Remove ${esc(sLabel(k))}">×</button>` : ''}</span>`).join('')}
+    const available = ks.filter(k => usable.includes(k)).length;
+    return `<article class="phl-card"><h3><span class="k">${i + 1}</span>${esc(pr.name)}<small>${esc(pr.from)}</small></h3><q>${esc(pr.creed)}</q><p class="hint" style="margin:6px 0 8px;font-size:11px">${available}/${ks.length} configured indicators present in ${S.season ? 'this season export' : 'the FM export schema'}${available < ks.length ? ' · missing indicators are not scored' : ''}</p>
+      <div class="phl-stats">${ks.map(k => `<span class="rl-chip neu" title="${esc(phStatNote(k))}">${esc(sLabel(k))}${dirOf(k) < 0 && sLabel(k) === k ? ' (fewer is better)' : ''}${ks.length > 1 ? `<button type="button" data-phstat-rm="${i}" data-k="${esc(k)}" aria-label="Remove ${esc(sLabel(k))}">×</button>` : ''}</span>`).join('')}
       <label class="sr" for="phadd${i}">Add a stat to ${esc(pr.name)}</label><select class="phl-add" id="phadd${i}" data-phstat-add="${i}"><option value="">+ stat</option>${usable.filter(k => SMETA[k] && !ks.includes(k) && SMETA[k][0] !== 'gk' && SMETA[k][0] !== 'ctx').map(k => `<option value="${esc(k)}">${esc(sLabel(k))}</option>`).join('')}</select></div></article>`; }).join('');
   const dots = (v, rid, i) => `<button type="button" class="phl-w" data-phw="${esc(rid)}" data-i="${i}" aria-label="${esc(PRINCIPLES[i].name)} weight ${v} of 3. Click to change.">${v ? [1,2,3].map(n => `<i class="${n <= v ? 'on' : ''}"></i>`).join('') : '<span>—</span>'}</button>`;
   const body = rows.length ? rows.map(({r, labs, extra}) => { const w = phW(r), ex = phPos(r);
@@ -6805,8 +6808,9 @@ async function renderPhilo(){
       <td class="used" title="${esc(labs.join(', '))}">${esc(labs.join(' · ') || 'Added by you')}</td></tr>`; }).join('') : `<tr><td colspan="9" class="rl-empty" style="text-align:left">No tactics yet. Set one up in Tactic &amp; best XI, or add a role below.</td></tr>`;
   const inUse = new Set(rows.map(x => x.r.id));
   root.innerHTML = `<div class="rl-ph"><div><h1 style="margin:0;font:700 32px/1 var(--display);letter-spacing:.01em">Philosophy score</h1>
-      <p style="margin:5px 0 0;color:var(--ink2);font-size:13px;max-width:980px">How well a player suits the way you play, kept separate from how well he suits a role. Six principles, weighted for each role you use. Start from a template and adjust the dots. The shape can change from save to save; these don’t. Changes are kept on this device and apply to every save.</p></div>
-      <div style="margin-left:auto;display:flex;gap:10px;align-items:center"><label class="sr" for="phl-tpl">Apply a template</label><select id="phl-tpl" class="rl-sel" style="width:auto"><option value="">Apply a template…</option>${Object.entries(PH_TEMPLATES).map(([k, t]) => `<option value="${k}">${esc(t.name)}${phCfg().template === k ? ' (current)' : ''}</option>`).join('')}</select><button class="btn" type="button" data-phreset>Restore the defaults</button></div></div>
+      <p style="margin:5px 0 0;color:var(--ink2);font-size:13px;max-width:980px">A save-specific playing identity. Each principle is built from related evidence families, compared with players in the same position group. Tune the indicators and role weights here; the active tactic, Best XI, Shadow Squad, recruitment plan and DoF recommendations use the same philosophy model.</p></div>
+      <div style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label class="sr" for="phl-tpl">Apply a template</label><select id="phl-tpl" class="rl-sel" style="width:auto"><option value="">Apply a template…</option>${phTemplateSelectOptions()}</select><label for="phl-mix" class="hint" style="white-space:nowrap">Tactical score mix</label><select id="phl-mix" class="rl-sel" style="width:auto"><option value="60"${phMix()===60?' selected':''}>60% role · 40% philosophy</option><option value="65"${phMix()===65?' selected':''}>65% role · 35% philosophy</option><option value="70"${phMix()===70?' selected':''}>70% role · 30% philosophy</option><option value="75"${phMix()===75?' selected':''}>75% role · 25% philosophy</option><option value="80"${phMix()===80?' selected':''}>80% role · 20% philosophy</option></select><button class="btn" type="button" data-phreset>Restore the defaults</button></div></div>
+    ${previewHtml}
     <div class="phl">
       <section class="panel" aria-labelledby="phl-pr-h"><div class="rl-h"><h2 id="phl-pr-h">The six principles</h2><span>Each one averages the percentiles of its stats</span></div><div class="phl-pr">${prin}</div></section>
       <div style="min-width:0">
@@ -6836,17 +6840,18 @@ async function renderPhilo(){
 function bindPhilo(root){
   root.addEventListener('click', async e => {
     const w = e.target.closest('[data-phw]'); if (w){ const r = roleById[w.dataset.phw], i = +w.dataset.i, c = phEdit(); c.w = c.w || {};
-      const cur = phW(r).slice(); cur[i] = (cur[i] + 1) % 4; c.w[phKey(r)] = cur; PHV.sel = r.id; phChanged(); renderPhilo(); return; }
-    const pr = e.target.closest('[data-phpos-rm]'); if (pr){ const r = roleById[pr.dataset.phposRm], c = phEdit(); c.pos = c.pos || {}; c.pos[r.id] = phPos(r).filter(x => x !== pr.dataset.st); PHV.sel = r.id; phChanged(); renderPhilo(); return; }
-    const sr = e.target.closest('[data-phstat-rm]'); if (sr){ const i = +sr.dataset.phstatRm, c = phEdit(); c.stats = c.stats || {}; c.stats[PRINCIPLES[i].id] = phStats(i).filter(k => k !== sr.dataset.k); phChanged(); renderPhilo(); return; }
-    const rm = e.target.closest('[data-phrm]'); if (rm){ const c = phEdit(); c.extra = (c.extra || []).filter(x => x !== rm.dataset.phrm); phChanged(); renderPhilo(); return; }
+      const cur = phW(r).slice(); cur[i] = (cur[i] + 1) % 4; c.w[phKey(r)] = cur; c.custom = true; PHV.sel = r.id; phChanged(); return; }
+    const pr = e.target.closest('[data-phpos-rm]'); if (pr){ const r = roleById[pr.dataset.phposRm], c = phEdit(); c.pos = c.pos || {}; c.pos[r.id] = phPos(r).filter(x => x !== pr.dataset.st); c.custom = true; PHV.sel = r.id; phChanged(); return; }
+    const sr = e.target.closest('[data-phstat-rm]'); if (sr){ const i = +sr.dataset.phstatRm, c = phEdit(); c.stats = c.stats || {}; c.stats[PRINCIPLES[i].id] = phStats(i).filter(k => k !== sr.dataset.k); c.custom = true; phChanged(); return; }
+    const rm = e.target.closest('[data-phrm]'); if (rm){ const c = phEdit(); c.extra = (c.extra || []).filter(x => x !== rm.dataset.phrm); c.custom = true; phChanged(); return; }
     if (e.target.closest('[data-phreset]')){ const ok = await ask({title:'Restore the default philosophy?', text:'Weights, search positions and principle stats go back to the starting values. Roles you added stay in the table.', ok:'Restore the defaults'}); if (!ok) return;
-      const c = phEdit(); delete c.w; delete c.pos; delete c.stats; delete c._phStatsBeforeIsolation; delete c.charOut; delete c.template; phChanged(); renderPhilo(); toast('Philosophy restored to the defaults'); } });
+      const c = phEdit(); delete c.w; delete c.pos; delete c.stats; delete c._phStatsBeforeIsolation; delete c.charOut; delete c.tacticalWeight; delete c.template; c.custom = false; phChanged(); toast('Philosophy restored to the defaults'); } });
   root.addEventListener('change', e => { const t = e.target;
-    if (t.dataset.phposAdd && t.value){ const r = roleById[t.dataset.phposAdd], c = phEdit(); c.pos = c.pos || {}; c.pos[r.id] = phPos(r).concat(t.value); PHV.sel = r.id; phChanged(); renderPhilo(); return; }
-    if (t.dataset.phstatAdd && t.value){ const i = +t.dataset.phstatAdd, c = phEdit(); c.stats = c.stats || {}; c.stats[PRINCIPLES[i].id] = phStats(i).concat(t.value); phChanged(); renderPhilo(); return; }
-    if (t.id === 'phl-addrole' && t.value){ const c = phEdit(); c.extra = (c.extra || []).filter(x => x !== t.value).concat(t.value); PHV.sel = t.value; phChanged(); renderPhilo(); return; }
-    if (t.id === 'phl-charout'){ phEdit().charOut = t.checked; phChanged(); } });
+    if (t.dataset.phposAdd && t.value){ const r = roleById[t.dataset.phposAdd], c = phEdit(); c.pos = c.pos || {}; c.pos[r.id] = phPos(r).concat(t.value); c.custom = true; PHV.sel = r.id; phChanged(); return; }
+    if (t.dataset.phstatAdd && t.value){ const i = +t.dataset.phstatAdd, c = phEdit(); c.stats = c.stats || {}; c.stats[PRINCIPLES[i].id] = phStats(i).concat(t.value); c.custom = true; phChanged(); return; }
+    if (t.id === 'phl-addrole' && t.value){ const c = phEdit(); c.extra = (c.extra || []).filter(x => x !== t.value).concat(t.value); c.custom = true; PHV.sel = t.value; phChanged(); return; }
+    if (t.id === 'phl-charout'){ const c = phEdit(); c.charOut = t.checked; c.custom = true; phChanged(); return; }
+    if (t.id === 'phl-mix'){ const c = phEdit(); c.tacticalWeight = +t.value; c.custom = true; phChanged(); return; } });
 }
 
 /* ================= Director of Football picks (budget and wage cap stored on the save: save.dof) ================= */
@@ -6869,7 +6874,7 @@ function slotRows(tac){ const xi = myXI(tac), b = benchFor(tac);
 function weakestSlot(tac){ const rows = slotRows(tac); return rows.slice().sort((a, b) => (a.p ? 1 : 0) - (b.p ? 1 : 0) || (a.gap ?? 999) - (b.gap ?? 999) || (a.sc ?? 0) - (b.sc ?? 0))[0] || null; }
 function dofContext(){ const tac = curTac(), codes = FORMATIONS[tac.formation] || [];
   if (DOF.role && roleById[DOF.role]){ const role = roleById[DOF.role];
-    const best = S.season.players.filter(p => isMine(p) && listedFor(p, role) && (p.mins || 0) >= 450).map(p => ({p, sc:roleScore(p, role)})).filter(o => o.sc != null).sort((a, b) => b.sc - a.sc)[0] || null;
+    const best = S.season.players.filter(p => isMine(p) && listedFor(p, role) && (p.mins || 0) >= 450).map(p => ({p, sc:tacticRoleScore(p, role)})).filter(o => o.sc != null).sort((a, b) => b.sc - a.sc)[0] || null;
     return {role, code:null, starter:best, tac}; }
   const rows = slotRows(tac); let d = DOF.slot && rows.find(x => x.code === DOF.slot); if (!d) d = weakestSlot(tac); if (!d) return null;
   return {role:d.role, code:d.code, starter:d.p ? {p:d.p, sc:d.sc} : null, bench:d.b, tac}; }
@@ -7439,7 +7444,7 @@ function ssHtml(){ if (!S.season) return '<div class="panel" style="padding:20px
     <div class="ss-gaps panel"><div class="rl-h"><h2>Recruitment gaps</h2><span>Open a group to see priority-ranked gaps: no target first, then affordable options, unknown costs and over-limit targets. Weaker starters break ties. Limits use your DoF budget and wage cap.</span></div><p class="ss-plan-summary">Current shortlist plan: <b>${planCount}</b> priority gap${planCount===1?'':'s'} fit within the combined transfer budget · estimated spend <b>${money(planSpend)}</b> of ${money(budgetLimit)} · ${planConflict} additional target${planConflict===1?'':'s'} exceed the remaining budget${planWages ? ' · estimated weekly wages '+money(planWages) : ''}. This is a shortlist estimate, not a confirmed fee.</p><div class="ss-gapgroups">${gapHtml || '<p class="ss-gapempty">No slots in this tactic.</p>'}</div></div>
     <div class="ss-group-filter" role="group" aria-label="Filter Shadow Squad by position">${groupButtons.map(g => `<button type="button" class="${SSV.groupFilter===g.id?'active':''}" data-ssgroup="${g.id}" aria-pressed="${SSV.groupFilter===g.id}">${esc(g.label)} <span>${g.count}</span></button>`).join('')}</div><div class="ss-pitch panel" style="--cols:${visibleLines.length}">${visibleLines.map(([lab, ss]) => `<div class="ss-line"><div class="rl-lab ss-lh">${esc(lab)}</div>${ss.map(card).join('')}</div>`).join('')}</div>
     ${b.unplaced.length ? `<div class="panel ss-un"><div class="rl-h"><h2>Not placed</h2><span>On your list but not listed at, or a search position for, any role in this tactic</span></div><div class="ss-unl">${b.unplaced.map(o => `<div class="ss-p"><div class="l1"><button type="button" class="nm" data-open="${esc(o.p.key)}">${esc(o.p.name)}</button>${copyBtn(o.p.name)}<span class="sc">${o.best ? o.best.sc : '–'}</span></div><div class="l2"><span class="rl-ell">${esc(o.p.pos)}${o.best ? ' · best here ' + esc(SLOT_LABEL[o.best.s.code]) : ''}</span>${ssMoveSel({e:o.e, opts:ssBuildOpts(o.p, b), pin:false}, tac, '')}</div></div>`).join('')}</div></div>` : ''}`; }
-function ssScore(p, role){ return (role.strata === 'GK') !== p.slots.has('GK') ? null : dispScore(p, role); }
+function ssScore(p, role){ return (role.strata === 'GK') !== p.slots.has('GK') ? null : tacticRoleScore(p, role); }
 function ssBuildOpts(p, b){ return b.slots.map(s => ({s, sc:ssScore(p, s.role), ok:posOK(p, s.role)})).filter(o => o.sc != null); }
 function bindSS(root){ if (SSV.bound || !root) return; SSV.bound = true;
   root.addEventListener('click', e => {
@@ -7773,9 +7778,10 @@ function applyPhTemplate(k){ const t = PH_TEMPLATES[k]; if (!t || !MG.doc) retur
   if (k === 'isolation' && c.template !== 'isolation') c._phStatsBeforeIsolation = c.stats ? JSON.parse(JSON.stringify(c.stats)) : null;
   else if (k !== 'isolation' && c.template === 'isolation') { if (c._phStatsBeforeIsolation) c.stats = c._phStatsBeforeIsolation; else delete c.stats; delete c._phStatsBeforeIsolation; }
   if (k === 'isolation') c.stats = Object.fromEntries(Object.entries(PH_ISOLATION_STATS).map(([id, stats]) => [id, stats.slice()]));
+  c.tacticalWeight = Number.isFinite(Number(c.tacticalWeight)) ? Number(c.tacticalWeight) : 70;
   c.w = {}; const done = new Set();
   ROLES.forEach(r => { const key = phKey(r); if (done.has(key)) return; done.add(key); c.w[key] = t.f(PH_DEF_W[r.type] || [2,2,2,2,1,2], r); });
-  c.template = k; phChanged(); }
+  c.template = k; c.custom = false; phChanged(); }
 
 /* ---------- first-run setup ---------- */
 const SU = {tac:'433p', ph:'possession'};
@@ -7813,8 +7819,8 @@ $('su-ok').onclick = async () => { const s = S.save; const club = $('su-club').v
 function maybeSetup(){ if (S.save && S.season && !S.save.setup && !PV.on) openSetup(); }
 document.addEventListener('click', e => { if (e.target.closest('[data-su]')){ e.preventDefault(); openSetup(); } });
 document.addEventListener('change', async e => { const t = e.target; if (!t || t.id !== 'phl-tpl' || !t.value) return; const k = t.value; t.value = '';
-  const ok = await ask({title:`Use the ${PH_TEMPLATES[k].name} template?`, text:'Every role’s weights are replaced by the template. Search positions and principle stats stay as they are.', ok:'Use it'}); if (!ok) return;
-  await mgr(); applyPhTemplate(k); renderPhilo(); toast(`${PH_TEMPLATES[k].name} weights applied`); });
+  const ok = await ask({title:`Use the ${PH_TEMPLATES[k].name} template?`, text:'This replaces the role weights for the active save. You can then customise its evidence and role weights.', ok:'Use it'}); if (!ok) return;
+  await mgr(); applyPhTemplate(k); toast(`${PH_TEMPLATES[k].name} philosophy applied to this save`); });
 $('su-later').onclick = async () => { if (S.save){ S.save.setup = 'later'; await persist(); } $('dlg-setup').close(); };
 
 /* ---------- progress: earlier imports are kept so January isn't lost when May replaces it ---------- */
