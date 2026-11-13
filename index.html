@@ -7694,9 +7694,14 @@ const PH_TEMPLATES = {
     if (s === 'GK') return [2,1,1,0,1,0];
     if (['anchor','cd','bpd','nncb','ifb'].includes(t)) return [3,1,1,1,3,1];
     if (['wcb','libero'].includes(t)) return [3,2,2,1,2,1];
-    if (['iwb','dlp','regista','rpm','ap','eng','treq'].includes(t)) return [3,3,3,0,1,1];
-    if (['fb','wb','cwb','wm','winger','wp','dw'].includes(t)) return [1,2,3,1,1,2];
-    if (['iw','if','raum','wtf','am','ss','af','cf','poacher'].includes(t)) return [1,2,3,0,0,1];
+    // Central distributors keep the structure while supplying the isolated attackers.
+    if (['iwb','dlp','regista','rpm'].includes(t)) return [3,3,3,1,1,1];
+    if (['ap','wp','eng','treq'].includes(t)) return [3,3,3,0,0,1];
+    // Wide runners provide width and repeat the outside movement; full-backs carry the greater engine load.
+    if (['fb','wb','cwb'].includes(t)) return [1,2,3,1,1,3];
+    if (['wm','winger','dw'].includes(t)) return [1,2,3,1,1,2];
+    // Direct attackers are judged primarily on penetration and threat, not pass volume.
+    if (['iw','if','raum','wtf','am','ss','af','cf','poacher'].includes(t)) return [1,1,3,0,0,1];
     if (['f9','dlf'].includes(t)) return [3,3,3,0,0,1];
     if (['cm','mez','carr','sv'].includes(t)) return [2,3,3,1,1,2];
     if (['b2b','bwm','pf'].includes(t)) return [2,2,2,3,2,3];
