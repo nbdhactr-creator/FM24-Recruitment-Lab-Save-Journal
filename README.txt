@@ -67,7 +67,7 @@ WHAT IT DOES
   * Philosophy score
       Six principles (keep the ball, always available, move it to hurt, win it
       back, defend on the front foot, intensity) weighted for each role, plus a
-      character test from personality. Nine play-style templates, from
+      character test from personality. Ten play-style templates, including Isolation & Individual Superiority, from
       possession and positional play to low block, wing play, pressing and
       physical.
 
